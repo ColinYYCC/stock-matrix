@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 32" fill="none">
+  <rect x="0" y="0" width="32" height="32" rx="6" fill="#15191f"/>
+  <rect x="3" y="3" width="12" height="20" rx="1" fill="#ef4444" opacity="0.85"/>
+  <rect x="17" y="3" width="12" height="12" rx="1" fill="#22c55e" opacity="0.75"/>
+  <rect x="17" y="17" width="12" height="12" rx="1" fill="#64748b" opacity="0.6"/>
+  <rect x="3" y="25" width="12" height="4" rx="1" fill="#f59e0b" opacity="0.7"/>
+  <text x="40" y="22" font-family="Arial, sans-serif" font-size="16" font-weight="700" fill="#f8fafc">A 股热力图</text>
+</svg>
