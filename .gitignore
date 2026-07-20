@@ -26,3 +26,9 @@ next-env.d.ts
 
 # Vercel
 .vercel
+
+# 代码图谱工具输出（graphify skill 生成，非项目运行必需，不传 GitHub）
+graphify-out/
+
+# macOS 系统自动生成的垃圾文件（._ 开头）
+._*

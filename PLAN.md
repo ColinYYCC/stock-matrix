@@ -1,7 +1,7 @@
-# 股市矩阵 — 仿做计划
+# 股市矩阵 — 设计与实现计划
 
-> 基于 [wenyuanw/a-share-heatmap](https://github.com/wenyuanw/a-share-heatmap) 的设计与实现计划。
-> MIT 许可证，参考学习后自主实现全部代码。
+> 股市矩阵的设计与实现计划。
+> 自主设计与实现全部代码。
 
 ---
 

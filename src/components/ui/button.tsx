@@ -10,12 +10,12 @@ type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
 
 /** 各 variant 对应的 Tailwind 类名 */
 const variantClasses: Record<NonNullable<ButtonProps["variant"]>, string> = {
-  default: "bg-primary text-primary-foreground hover:bg-primary/90",
+  default: "bg-primary text-primary-foreground hover:bg-primary/85",
   outline:
-    "border-border bg-background hover:bg-muted hover:text-foreground dark:border-input dark:bg-input/30 dark:hover:bg-input/50",
-  secondary: "bg-secondary text-secondary-foreground hover:bg-secondary/80",
-  ghost: "hover:bg-muted hover:text-foreground dark:hover:bg-muted/50",
-  destructive: "bg-destructive/10 text-destructive hover:bg-destructive/20",
+    "border-border bg-background hover:bg-muted/70 hover:text-foreground dark:border-input dark:bg-input/30 dark:hover:bg-input/55",
+  secondary: "bg-secondary text-secondary-foreground hover:bg-secondary/75",
+  ghost: "hover:bg-muted/60 hover:text-foreground dark:hover:bg-muted/40",
+  destructive: "bg-destructive/10 text-destructive hover:bg-destructive/25",
   link: "text-primary underline-offset-4 hover:underline",
 };
 

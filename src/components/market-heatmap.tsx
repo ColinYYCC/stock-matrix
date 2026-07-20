@@ -8,7 +8,6 @@ import {
   useState,
   type CSSProperties,
   type MouseEvent as ReactMouseEvent,
-  type WheelEvent as ReactWheelEvent,
 } from "react";
 import {
   Loader2,
@@ -27,10 +26,12 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Sidebar } from "@/components/sidebar";
 import { Inspector, type InspectorStyle } from "@/components/inspector";
+import { MobileStockSheet } from "@/components/mobile-stock-sheet";
 import { ColorLegend } from "@/components/color-legend";
 import { cn } from "@/lib/utils";
 import { clamp, formatCompactChange } from "@/lib/format";
 import { getLegendGradient } from "@/lib/heatmap-color";
+import { getSparklineUrl, getDailyKlineUrl } from "@/lib/stock-image";
 import { drawHeatmap, heatmapCanvasThemes } from "@/lib/canvas-render";
 import { binaryTreemap } from "@/lib/treemap";
 import { getMessages, type HeatmapMessages } from "@/lib/i18n";
@@ -106,20 +107,6 @@ type MarketOverview = {
 function toXueqiuSymbol(code: string) {
   const [symbol, market] = code.split(".");
   return `${market}${symbol}`;
-}
-
-/** 获取东方财富分时图 URL */
-function getSparklineUrl(code: string) {
-  const [symbol = "", market = "SH"] = code.split(".");
-  const marketId = market === "SH" ? "1" : "0";
-  return `https://webquotepic.eastmoney.com/GetPic.aspx?nid=${marketId}.${symbol}&imageType=RJY`;
-}
-
-/** 获取新浪日线 K 线图 URL */
-function getDailyKlineUrl(code: string) {
-  const [symbol = "", market = "SH"] = code.split(".");
-  const prefix = market === "SH" ? "sh" : market === "SZ" ? "sz" : "bj";
-  return `https://image.sinajs.cn/newchart/daily/n/${prefix}${symbol}.gif`;
 }
 
 /** 获取实盘成交额（quotes 里有就用实盘，否则用 fallback） */
@@ -468,6 +455,7 @@ export function MarketHeatmap({ locale: initialLocale }: { locale: Locale; messa
   const [view, setView] = useState<ViewState>({ scale: 1, x: 0, y: 0 });
   const [isPanning, setIsPanning] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [sharePending, setSharePending] = useState(false);
 
   const [hoveredStockCode, setHoveredStockCode] = useState<string | null>(null);
   const [hoveredBoardName, setHoveredBoardName] = useState<string | null>(null);
@@ -514,10 +502,10 @@ export function MarketHeatmap({ locale: initialLocale }: { locale: Locale; messa
   // ============ 加载用户偏好设置 ============
   useEffect(() => {
     try {
-      const storedDisplayMode = window.localStorage.getItem("heatmap-display-mode");
-      const storedTheme = window.localStorage.getItem("heatmap-theme-color");
-      const storedPriceColor = window.localStorage.getItem("heatmap-price-color");
-      const storedSizeMode = window.localStorage.getItem("heatmap-size-mode");
+      const storedDisplayMode = window.localStorage.getItem("stock-matrix-display-mode");
+      const storedTheme = window.localStorage.getItem("stock-matrix-theme-color");
+      const storedPriceColor = window.localStorage.getItem("stock-matrix-price-color");
+      const storedSizeMode = window.localStorage.getItem("stock-matrix-size-mode");
       if (storedDisplayMode === "dark" || storedDisplayMode === "light") setDisplayMode(storedDisplayMode);
       if (storedTheme === "green" || storedTheme === "red" || storedTheme === "blue" || storedTheme === "violet") setThemeColor(storedTheme);
       if (storedPriceColor === "red-rise" || storedPriceColor === "green-rise") setPriceColorMode(storedPriceColor);
@@ -532,17 +520,17 @@ export function MarketHeatmap({ locale: initialLocale }: { locale: Locale; messa
     const isDark = displayMode === "dark";
     document.documentElement.classList.toggle("dark", isDark);
     document.documentElement.style.colorScheme = isDark ? "dark" : "light";
-    try { window.localStorage.setItem("heatmap-display-mode", displayMode); } catch { /* 可选 */ }
+    try { window.localStorage.setItem("stock-matrix-display-mode", displayMode); } catch { /* 可选 */ }
   }, [displayMode, preferencesReady]);
 
   useEffect(() => {
     if (!preferencesReady) return;
-    try { window.localStorage.setItem("heatmap-price-color", priceColorMode); } catch { /* 可选 */ }
+    try { window.localStorage.setItem("stock-matrix-price-color", priceColorMode); } catch { /* 可选 */ }
   }, [preferencesReady, priceColorMode]);
 
   useEffect(() => {
     if (!preferencesReady) return;
-    try { window.localStorage.setItem("heatmap-size-mode", sizeMode); } catch { /* 可选 */ }
+    try { window.localStorage.setItem("stock-matrix-size-mode", sizeMode); } catch { /* 可选 */ }
   }, [preferencesReady, sizeMode]);
 
   // ============ 尺寸监听 ============
@@ -572,11 +560,11 @@ export function MarketHeatmap({ locale: initialLocale }: { locale: Locale; messa
   useEffect(() => { refreshSize(); }, [isFullscreen, refreshSize]);
 
   useEffect(() => {
-    document.documentElement.classList.add("heatmap-page-active");
-    document.body.classList.add("heatmap-page-active");
+    document.documentElement.classList.add("matrix-page-active");
+    document.body.classList.add("matrix-page-active");
     return () => {
-      document.documentElement.classList.remove("heatmap-page-active");
-      document.body.classList.remove("heatmap-page-active");
+      document.documentElement.classList.remove("matrix-page-active");
+      document.body.classList.remove("matrix-page-active");
     };
   }, []);
 
@@ -707,7 +695,9 @@ export function MarketHeatmap({ locale: initialLocale }: { locale: Locale; messa
           ...result,
           stockCount: selectedBoard.stockCount,
           boardCount: 1,
-          summary: { ...result.summary, advanceCount, flatCount, declineCount, turnoverAmount, turnoverPreviousAmount: 0, turnoverDelta: 0, indexChangePct: weightedAverageChange(selectedBoard.children, {} as QuoteMap) },
+          // 注意：turnoverPreviousAmount 和 turnoverDelta 保留全市场原始值，
+          // 因为 API 没有提供单板块的"昨日成交额"，硬编码为 0 会让侧边栏误显示"持平"
+          summary: { ...result.summary, advanceCount, flatCount, declineCount, turnoverAmount, indexChangePct: weightedAverageChange(selectedBoard.children, {} as QuoteMap) },
           nodes: [selectedBoard],
         };
       }
@@ -736,7 +726,7 @@ export function MarketHeatmap({ locale: initialLocale }: { locale: Locale; messa
           totalStockCount += 1;
         }
       }
-      result = { ...result, stockCount: totalStockCount, boardCount: filteredNodes.length, summary: { ...result.summary, advanceCount, flatCount, declineCount, turnoverAmount, turnoverPreviousAmount: 0, turnoverDelta: 0 }, nodes: filteredNodes };
+      result = { ...result, stockCount: totalStockCount, boardCount: filteredNodes.length, summary: { ...result.summary, advanceCount, flatCount, declineCount, turnoverAmount }, nodes: filteredNodes };
     }
 
     return result;
@@ -899,7 +889,24 @@ export function MarketHeatmap({ locale: initialLocale }: { locale: Locale; messa
       return { ...rect, changePct: totalValue > 0 ? weightedSum / totalValue : 0 };
     });
 
-    return { stockRects, boardRects, subBoardRects: layoutPositions.subBoardRects };
+    // 按二级行业重新计算加权涨跌幅（用于子板块标题栏颜色）
+    // 用 "boardName\0subBoardName" 作为 key，避免同名子板块跨板块混淆
+    const subBoardChangeMap = new Map<string, number>();
+    const subBoardValueMap = new Map<string, number>();
+    for (const rect of stockRects) {
+      const key = `${rect.boardName}\0${rect.subBoardName}`;
+      subBoardChangeMap.set(key, (subBoardChangeMap.get(key) ?? 0) + rect.changePct * rect.value);
+      subBoardValueMap.set(key, (subBoardValueMap.get(key) ?? 0) + rect.value);
+    }
+    const subBoardRects = layoutPositions.subBoardRects.map((rect) => {
+      const key = `${rect.boardName}\0${rect.name}`;
+      const totalValue = subBoardValueMap.get(key) ?? 0;
+      const weightedSum = subBoardChangeMap.get(key) ?? 0;
+      // totalValue 为 0 时保留原值，避免误将颜色重置为平盘灰
+      return { ...rect, changePct: totalValue > 0 ? weightedSum / totalValue : rect.changePct };
+    });
+
+    return { stockRects, boardRects, subBoardRects };
   }, [layoutPositions, quotes]);
 
   useEffect(() => {
@@ -960,6 +967,19 @@ export function MarketHeatmap({ locale: initialLocale }: { locale: Locale; messa
     return activeBoardName;
   }, [activeBoardName, highlightedStock, activeSubBoardName]);
 
+  // ============ 移动端个股详情面板的回调 ============
+  // 打开雪球页面查看更多详情
+  const openXueqiuForStock = useCallback((code: string) => {
+    window.open(`https://xueqiu.com/S/${toXueqiuSymbol(code)}`, "_blank", "noopener,noreferrer");
+  }, []);
+
+  // 关闭移动端详情面板时清空选中状态
+  const closeMobileSheet = useCallback(() => {
+    setSelectedStockCode(null);
+    setSelectedBoardName(null);
+    setSelectedSubBoardName(null);
+  }, []);
+
   // ============ 悬浮面板定位 ============
   const inspectorStyle = useMemo<InspectorStyle>(() => {
     if (isMobile) return null;
@@ -1003,6 +1023,68 @@ export function MarketHeatmap({ locale: initialLocale }: { locale: Locale; messa
 
     return { left, top, width: popupWidth, maxHeight };
   }, [canvasSize.height, canvasSize.width, activeBoardRect, activeStock, activeSubBoardRect, inspectorStocks.length, isMobile, view.scale, view.x, view.y]);
+
+  // ============ 悬浮面板键盘滚动 ============
+  // 悬浮面板设了 pointer-events-none（让鼠标穿透到下面的画布），所以鼠标滚轮滚不动列表。
+  // 这里监听键盘 ↑/↓ 或 J/K 来滚动列表，和 i18n 提示文案「↑/↓ 或 J/K 可滚动详情列表」对应。
+  useEffect(() => {
+    if (!inspectorStyle || inspectorStocks.length === 0) return;
+
+    function onKeyDown(event: KeyboardEvent) {
+      // 按住 Alt/Ctrl/Meta 时不拦截，让浏览器快捷键正常工作
+      if (event.altKey || event.ctrlKey || event.metaKey) return;
+
+      // 如果焦点在输入框、文本域等可编辑元素上，不拦截键盘事件
+      const target = event.target as HTMLElement | null;
+      const tagName = target?.tagName;
+      if (target?.isContentEditable || tagName === "INPUT" || tagName === "TEXTAREA" || tagName === "SELECT") return;
+
+      const list = inspectorListRef.current;
+      if (!list) return;
+
+      const pageStep = Math.max(120, list.clientHeight * 0.82);
+      let handled = true;
+      let top = list.scrollTop;
+
+      switch (event.key) {
+        case "ArrowDown":
+        case "j":
+        case "J":
+          top += 56;
+          break;
+        case "ArrowUp":
+        case "k":
+        case "K":
+          top -= 56;
+          break;
+        case "PageDown":
+          top += pageStep;
+          break;
+        case "PageUp":
+          top -= pageStep;
+          break;
+        case "Home":
+          top = 0;
+          break;
+        case "End":
+          top = list.scrollHeight;
+          break;
+        default:
+          handled = false;
+      }
+
+      if (!handled) return;
+
+      event.preventDefault();
+      list.scrollTo({
+        top: clamp(top, 0, Math.max(0, list.scrollHeight - list.clientHeight)),
+        behavior: "smooth",
+      });
+    }
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [inspectorStocks.length, inspectorStyle]);
 
   // ============ Canvas 绘制（用 requestAnimationFrame 推迟，不卡住主线程） ============
   // 性能优化：把 Canvas 绘制放到下一帧执行，让浏览器先把 UI 变化（如加载遮罩）画出来
@@ -1127,24 +1209,33 @@ export function MarketHeatmap({ locale: initialLocale }: { locale: Locale; messa
     }
   }, [isMobile, dragStateRef]);
 
-  const onWheel = useCallback((event: ReactWheelEvent<HTMLCanvasElement>) => {
-    event.preventDefault();
+  // ============ 滚轮缩放 ============
+  // React 19 对 wheel 事件使用被动监听（passive listener），合成事件里 preventDefault 无效
+  // 改用原生事件监听器，设置 passive: false 确保 preventDefault 生效
+  useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-    const bounds = canvas.getBoundingClientRect();
-    const cursorX = event.clientX - bounds.left;
-    const cursorY = event.clientY - bounds.top;
-    setView((current) => {
-      const step = event.deltaY < 0 ? 0.16 : -0.16;
-      const nextScale = clamp(current.scale + step, MIN_ZOOM, MAX_ZOOM);
-      if (nextScale === current.scale) return current;
-      const worldX = (cursorX - current.x) / current.scale;
-      const worldY = (cursorY - current.y) / current.scale;
-      const rawX = cursorX - worldX * nextScale;
-      const rawY = cursorY - worldY * nextScale;
-      const nextOffset = clampOffset(canvasSize.width, canvasSize.height, nextScale, rawX, rawY);
-      return { scale: nextScale, x: nextOffset.x, y: nextOffset.y };
-    });
+
+    function handleWheel(event: WheelEvent) {
+      event.preventDefault();
+      const bounds = canvas!.getBoundingClientRect();
+      const cursorX = event.clientX - bounds.left;
+      const cursorY = event.clientY - bounds.top;
+      setView((current) => {
+        const step = event.deltaY < 0 ? 0.16 : -0.16;
+        const nextScale = clamp(current.scale + step, MIN_ZOOM, MAX_ZOOM);
+        if (nextScale === current.scale) return current;
+        const worldX = (cursorX - current.x) / current.scale;
+        const worldY = (cursorY - current.y) / current.scale;
+        const rawX = cursorX - worldX * nextScale;
+        const rawY = cursorY - worldY * nextScale;
+        const nextOffset = clampOffset(canvasSize.width, canvasSize.height, nextScale, rawX, rawY);
+        return { scale: nextScale, x: nextOffset.x, y: nextOffset.y };
+      });
+    }
+
+    canvas.addEventListener("wheel", handleWheel, { passive: false });
+    return () => canvas.removeEventListener("wheel", handleWheel);
   }, [canvasSize.height, canvasSize.width]);
 
   const onDoubleClick = useCallback((event: ReactMouseEvent<HTMLCanvasElement>) => {
@@ -1245,6 +1336,31 @@ export function MarketHeatmap({ locale: initialLocale }: { locale: Locale; messa
       }
     }
 
+    function performSingleTap(tapClientX: number, tapClientY: number) {
+      const tapBounds = canvas!.getBoundingClientRect();
+      const tapWorld = toWorldPoint(tapClientX - tapBounds.left, tapClientY - tapBounds.top);
+      const stock = pickFunctions.pickStock(tapWorld.x, tapWorld.y);
+      if (stock) {
+        setSelectedStockCode(stock.code);
+        setSelectedBoardName(stock.boardName);
+        setSelectedSubBoardName(stock.subBoardName || null);
+      } else {
+        const subBoard = pickFunctions.pickSubBoard(tapWorld.x, tapWorld.y);
+        if (subBoard) {
+          setSelectedStockCode(null);
+          setSelectedBoardName(subBoard.boardName);
+          setSelectedSubBoardName(subBoard.name);
+        } else {
+          const board = pickFunctions.pickBoard(tapWorld.x, tapWorld.y);
+          if (board) {
+            setSelectedStockCode(null);
+            setSelectedBoardName(board.name);
+            setSelectedSubBoardName(null);
+          }
+        }
+      }
+    }
+
     function onTouchEnd(event: TouchEvent) {
       const state = touchStateRef.current;
       if (state.mode === "tap" && !state.moved && Date.now() - state.startTs < 350) {
@@ -1252,7 +1368,11 @@ export function MarketHeatmap({ locale: initialLocale }: { locale: Locale; messa
         const sinceLastTap = now - state.lastTapTs;
         const tapDistance = Math.hypot(state.startClientX - state.lastTapX, state.startClientY - state.lastTapY);
         if (state.lastTapTs > 0 && sinceLastTap < 320 && tapDistance < 32) {
-          // 双击 → 切换板块筛选
+          // 双击 → 取消挂起的单击定时器，只执行切换板块筛选
+          if (state.singleTapTimer !== null) {
+            clearTimeout(state.singleTapTimer);
+            state.singleTapTimer = null;
+          }
           const bounds = canvas!.getBoundingClientRect();
           const world = toWorldPoint(state.startClientX - bounds.left, state.startClientY - bounds.top);
           const boardTitle = pickFunctions.pickBoardTitle(world.x, world.y) ?? pickFunctions.pickBoard(world.x, world.y);
@@ -1264,34 +1384,24 @@ export function MarketHeatmap({ locale: initialLocale }: { locale: Locale; messa
           state.lastTapY = 0;
           if (event.touches.length === 0) { state.mode = "idle"; state.moved = false; }
           return;
-        } else {
-          state.lastTapTs = now;
-          state.lastTapX = state.startClientX;
-          state.lastTapY = state.startClientY;
         }
-        // 单击 → 选中股票
-        const bounds = canvas!.getBoundingClientRect();
-        const world = toWorldPoint(state.startClientX - bounds.left, state.startClientY - bounds.top);
-        const stock = pickFunctions.pickStock(world.x, world.y);
-        if (stock) {
-          setSelectedStockCode(stock.code);
-          setSelectedBoardName(stock.boardName);
-          setSelectedSubBoardName(stock.subBoardName || null);
-        } else {
-          const subBoard = pickFunctions.pickSubBoard(world.x, world.y);
-          if (subBoard) {
-            setSelectedStockCode(null);
-            setSelectedBoardName(subBoard.boardName);
-            setSelectedSubBoardName(subBoard.name);
-          } else {
-            const board = pickFunctions.pickBoard(world.x, world.y);
-            if (board) {
-              setSelectedStockCode(null);
-              setSelectedBoardName(board.name);
-              setSelectedSubBoardName(null);
-            }
-          }
+        // 第一次 tap → 记录时间，延迟 320ms 执行选中
+        // 如果在此期间来了第二次 tap（双击），定时器会被取消
+        state.lastTapTs = now;
+        state.lastTapX = state.startClientX;
+        state.lastTapY = state.startClientY;
+        // 保存当前 tap 的起始位置，避免被后续 touchStart 覆盖
+        const tapStartClientX = state.startClientX;
+        const tapStartClientY = state.startClientY;
+        if (state.singleTapTimer !== null) {
+          clearTimeout(state.singleTapTimer);
         }
+        state.singleTapTimer = window.setTimeout(() => {
+          state.singleTapTimer = null;
+          performSingleTap(tapStartClientX, tapStartClientY);
+        }, 320);
+        if (event.touches.length === 0) { state.mode = "idle"; state.moved = false; }
+        return;
       }
       if (event.touches.length === 0) { state.mode = "idle"; state.moved = false; return; }
       if (event.touches.length === 1 && state.mode === "pinch") {
@@ -1305,15 +1415,32 @@ export function MarketHeatmap({ locale: initialLocale }: { locale: Locale; messa
       }
     }
 
+    // touchcancel：触摸被系统中断（如来电），不应触发任何 tap 操作
+    function onTouchCancel(event: TouchEvent) {
+      const state = touchStateRef.current;
+      if (state.singleTapTimer !== null) {
+        clearTimeout(state.singleTapTimer);
+        state.singleTapTimer = null;
+      }
+      state.mode = "idle";
+      state.moved = false;
+      state.lastTapTs = 0;
+    }
+
     canvas.addEventListener("touchstart", onTouchStart, { passive: false });
     canvas.addEventListener("touchmove", onTouchMove, { passive: false });
     canvas.addEventListener("touchend", onTouchEnd, { passive: true });
-    canvas.addEventListener("touchcancel", onTouchEnd, { passive: true });
+    canvas.addEventListener("touchcancel", onTouchCancel, { passive: true });
     return () => {
+      // 组件卸载或依赖变化时，清理可能挂起的单击定时器
+      if (touchStateRef.current.singleTapTimer !== null) {
+        clearTimeout(touchStateRef.current.singleTapTimer);
+        touchStateRef.current.singleTapTimer = null;
+      }
       canvas.removeEventListener("touchstart", onTouchStart);
       canvas.removeEventListener("touchmove", onTouchMove);
       canvas.removeEventListener("touchend", onTouchEnd);
-      canvas.removeEventListener("touchcancel", onTouchEnd);
+      canvas.removeEventListener("touchcancel", onTouchCancel);
     };
   }, [canvasSize.height, canvasSize.width, pickFunctions, toWorldPoint, touchStateRef]);
 
@@ -1329,13 +1456,14 @@ export function MarketHeatmap({ locale: initialLocale }: { locale: Locale; messa
 
   useEffect(() => {
     if (!isFullscreen) return;
-    toast(isMobile ? messages.fullscreenToastMobile : messages.fullscreenToast, { id: "heatmap-fullscreen-hint", duration: 3200 });
+    toast(isMobile ? messages.fullscreenToastMobile : messages.fullscreenToast, { id: "matrix-fullscreen-hint", duration: 3200 });
   }, [isFullscreen, isMobile, messages.fullscreenToast, messages.fullscreenToastMobile]);
 
   // ============ 截图分享 ============
   const createSharePreview = useCallback(async () => {
     const sourceCanvas = canvasRef.current;
     if (!sourceCanvas) return;
+    setSharePending(true);
     try {
       const pixelRatio = sourceCanvas.width / Math.max(1, canvasSize.width);
       const cssHorizontalPadding = clamp(canvasSize.width * 0.015, 12, 22);
@@ -1364,14 +1492,16 @@ export function MarketHeatmap({ locale: initialLocale }: { locale: Locale; messa
       });
       const url = URL.createObjectURL(blob);
       const stamp = updatedAt ? updatedAt.replace(/[:T]/g, "-").slice(0, 19) : Date.now().toString();
-      const filename = `ashare-heatmap-${market}-${period}-${stamp}.png`;
+      const filename = `stock-matrix-${market}-${period}-${stamp}.png`;
       const anchor = document.createElement("a");
       anchor.href = url;
       anchor.download = filename;
       anchor.click();
       URL.revokeObjectURL(url);
     } catch {
-      toast.error(messages.shareFailed, { id: "heatmap-share-generate", duration: 3200 });
+      toast.error(messages.shareFailed, { id: "matrix-share-generate", duration: 3200 });
+    } finally {
+      setSharePending(false);
     }
   }, [canvasSize.width, isLightMode, market, messages, period, updatedAt]);
 
@@ -1468,7 +1598,6 @@ export function MarketHeatmap({ locale: initialLocale }: { locale: Locale; messa
               onMouseMove={onMouseMove}
               onMouseUp={onMouseUp}
               onMouseLeave={onMouseLeave}
-              onWheel={onWheel}
               onDoubleClick={onDoubleClick}
             />
 
@@ -1502,13 +1631,27 @@ export function MarketHeatmap({ locale: initialLocale }: { locale: Locale; messa
             isLightMode={isLightMode}
             areaTipMessage={areaTipMessage}
             isMobile={isMobile}
-            sharePending={false}
+            sharePending={sharePending}
             onOpenTips={() => { setSettingsTab("help"); setSettingsOpen(true); }}
             onShare={createSharePreview}
             githubUrl="https://github.com/ColinYYCC/stock-matrix"
           />
         )}
       </div>
+
+      {/* 移动端个股详情面板：点击色块后从底部弹出 */}
+      {isMobile && selectedBoardName && (
+        <MobileStockSheet
+          title={activeInspectorTitle ?? selectedBoardName}
+          stock={activeInspectorStock}
+          stocks={inspectorStocks}
+          messages={messages}
+          priceColorMode={priceColorMode}
+          onClose={closeMobileSheet}
+          onSelectStock={setSelectedStockCode}
+          onOpenXueqiu={openXueqiuForStock}
+        />
+      )}
 
       {/* 设置面板 */}
       <SettingsDrawer

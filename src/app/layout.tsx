@@ -36,7 +36,7 @@ export const metadata: Metadata = {
  */
 const themeInitScript = `
   try {
-    const displayMode = window.localStorage.getItem("heatmap-display-mode");
+    const displayMode = window.localStorage.getItem("stock-matrix-display-mode");
     const isDark = displayMode !== "light";
     document.documentElement.classList.toggle("dark", isDark);
     document.documentElement.style.colorScheme = isDark ? "dark" : "light";

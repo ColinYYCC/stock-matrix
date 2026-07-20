@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useRef } from "react";
+import { useCallback, useMemo, useRef } from "react";
 import type { BoardRect, StockRect, SubBoardRect, ViewState } from "@/types/heatmap";
 import { clamp } from "@/lib/format";
 
@@ -47,6 +47,11 @@ export function useCanvasInteraction(params: {
 }) {
   const { canvasSize, view, setView, stockRectsRef, boardRectsRef, subBoardRectsRef, isMobile } = params;
 
+  // 用 ref 存最新的 view 值，让 toWorldPoint 不依赖 view 变化
+  // 这样缩放/平移时 toWorldPoint 不会重建，触摸事件监听器也不会频繁重绑
+  const viewRef = useRef(view);
+  viewRef.current = view;
+
   const dragStateRef = useRef({
     active: false,
     pointerX: 0,
@@ -72,15 +77,20 @@ export function useCanvasInteraction(params: {
     lastTapTs: 0,
     lastTapX: 0,
     lastTapY: 0,
+    // 单击选中的延迟定时器：第一次 tap 后等一段时间，
+    // 如果期间来了第二次 tap（双击），就取消定时器不执行选中，
+    // 避免双击时先选中再切换导致的闪烁
+    singleTapTimer: null as number | null,
   });
 
   /** 屏幕坐标 → 世界坐标（考虑缩放和偏移） */
+  // 通过 viewRef.current 读取最新的 view 值，不依赖 view 变化
   const toWorldPoint = useCallback(
     (screenX: number, screenY: number) => ({
-      x: (screenX - view.x) / view.scale,
-      y: (screenY - view.y) / view.scale,
+      x: (screenX - viewRef.current.x) / viewRef.current.scale,
+      y: (screenY - viewRef.current.y) / viewRef.current.scale,
     }),
-    [view.scale, view.x, view.y]
+    []
   );
 
   /** 命中检测：从后往前遍历，返回第一个命中的个股 */
@@ -138,13 +148,11 @@ export function useCanvasInteraction(params: {
     return null;
   }, [subBoardRectsRef]);
 
-  const pickFunctions: PickFunctions = {
-    pickStock,
-    pickBoard,
-    pickBoardTitle,
-    pickSubBoard,
-    pickSubBoardTitle,
-  };
+  // 用 useMemo 包裹，保证 pickFunctions 引用稳定，避免依赖它的 useEffect 频繁重绑
+  const pickFunctions: PickFunctions = useMemo(
+    () => ({ pickStock, pickBoard, pickBoardTitle, pickSubBoard, pickSubBoardTitle }),
+    [pickStock, pickBoard, pickBoardTitle, pickSubBoard, pickSubBoardTitle]
+  );
 
   return {
     toWorldPoint,

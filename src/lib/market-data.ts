@@ -162,19 +162,19 @@ const marketIndexSecids: Record<MarketKey, string> = {
 
 const sinaRequestHeaders = {
   Referer: "https://finance.sina.com.cn/",
-  "User-Agent": "Mozilla/5.0 (compatible; AShareHeatmap/1.0)",
+  "User-Agent": "Mozilla/5.0 (compatible; StockMatrix/1.0)",
   Accept: "*/*",
 };
 
 const eastmoneyRequestHeaders = {
   Referer: "https://quote.eastmoney.com/",
-  "User-Agent": "Mozilla/5.0 (compatible; AShareHeatmap/1.0)",
+  "User-Agent": "Mozilla/5.0 (compatible; StockMatrix/1.0)",
   Accept: "application/json, text/plain, */*",
 };
 
 const summaryRequestHeaders = {
   Referer: "https://q.10jqka.com.cn/",
-  "User-Agent": "Mozilla/5.0 (compatible; AShareHeatmap/1.0)",
+  "User-Agent": "Mozilla/5.0 (compatible; StockMatrix/1.0)",
   Accept: "application/json, text/plain, */*",
 };
 
@@ -257,7 +257,7 @@ let hasLoggedFallbackWarning = false;
 // ============ 工具函数 ============
 
 /** 把值转成数字，无法转换返回 0 */
-function toNumber(value: number | string | undefined): number {
+function safeNumber(value: number | string | undefined): number {
   if (typeof value === "number" && Number.isFinite(value)) return value;
   if (typeof value === "string") {
     const parsed = Number(value);
@@ -267,7 +267,7 @@ function toNumber(value: number | string | undefined): number {
 }
 
 /** 把值转成数字，无法转换返回 null */
-function toFiniteNumber(value: number | string | undefined): number | null {
+function parseFiniteValue(value: number | string | undefined): number | null {
   if (typeof value === "number" && Number.isFinite(value)) return value;
   if (typeof value === "string") {
     const parsed = Number(value);
@@ -277,7 +277,7 @@ function toFiniteNumber(value: number | string | undefined): number | null {
 }
 
 /** 从 changes 对象中取出指定周期的涨跌幅，取不到就退回当日涨幅 */
-function getChangeForPeriod(
+function extractPeriodChange(
   changes: Partial<Record<HeatmapPeriodKey, number>> | undefined,
   period: HeatmapPeriodKey,
   fallback = 0
@@ -289,13 +289,13 @@ function getChangeForPeriod(
 }
 
 /** 把 "600519.SH" 格式转换成东方财富的 "1.600519" 格式 */
-function toEastmoneySecid(code: string): string {
+function buildEastmoneySecid(code: string): string {
   const [symbol, exchange] = code.split(".");
   return `${exchange === "SH" ? 1 : 0}.${symbol}`;
 }
 
 /** 把东方财富返回的 f12+f13 转成 "600519.SH" 格式 */
-function parseEastmoneyCode(symbol: number | string | undefined, marketFlag: number | string | undefined): string | null {
+function decodeEastmoneySymbol(symbol: number | string | undefined, marketFlag: number | string | undefined): string | null {
   const normalizedSymbol = String(symbol ?? "").trim();
   if (!normalizedSymbol) return null;
   const market = Number(marketFlag) === 1 ? "SH" : /^[489]/.test(normalizedSymbol) ? "BJ" : "SZ";
@@ -303,14 +303,14 @@ function parseEastmoneyCode(symbol: number | string | undefined, marketFlag: num
 }
 
 /** 把东方财富的秒级时间戳转成 ISO 字符串 */
-function parseEastmoneyTimestamp(value: number | string | undefined): string {
-  const seconds = toFiniteNumber(value);
+function formatEastmoneyTime(value: number | string | undefined): string {
+  const seconds = parseFiniteValue(value);
   if (!seconds || seconds <= 0) return "";
   return new Date(seconds * 1000).toISOString();
 }
 
 /** 解析同花顺的时间字符串 */
-function parseShanghaiTimestamp(value: string | undefined): string {
+function formatShanghaiTime(value: string | undefined): string {
   const trimmed = value?.trim();
   if (!trimmed) return new Date().toISOString();
   if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(trimmed)) {
@@ -322,7 +322,7 @@ function parseShanghaiTimestamp(value: string | undefined): string {
 }
 
 /** 解析新浪的日期+时间 */
-function parseSinaTimestamp(dateText: string | undefined, timeText: string | undefined): string {
+function formatSinaTime(dateText: string | undefined, timeText: string | undefined): string {
   const normalizedDate = String(dateText ?? "").trim();
   const normalizedTime = String(timeText ?? "").trim();
   if (!/^\d{4}-\d{2}-\d{2}$/.test(normalizedDate) || !/^\d{2}:\d{2}:\d{2}$/.test(normalizedTime)) {
@@ -332,29 +332,29 @@ function parseSinaTimestamp(dateText: string | undefined, timeText: string | und
 }
 
 /** 确保值是正数，否则返回 1（避免树图算法除零） */
-function normalizeValue(value: number): number {
+function normalizeAreaValue(value: number): number {
   return Number.isFinite(value) && value > 0 ? value : 1;
 }
 
 /** 获取股票的面积权重值（流通市值优先） */
-function getStockValue(stock: StockSnapshot): number {
-  return normalizeValue(stock.floatMarketCap || stock.totalMarketCap || stock.price * 1_000_000);
+function getStockAreaValue(stock: StockSnapshot): number {
+  return normalizeAreaValue(stock.floatMarketCap || stock.totalMarketCap || stock.price * 1_000_000);
 }
 
 /** 获取股票的成交额 */
-function getStockTurnoverAmount(stock: StockSnapshot): number {
+function getStockTurnover(stock: StockSnapshot): number {
   return Number.isFinite(stock.turnoverAmount) && (stock.turnoverAmount ?? 0) > 0 ? stock.turnoverAmount ?? 0 : 0;
 }
 
 /** 兜底估算成交额（JSON 快照没有实时成交额时用） */
-function estimateFallbackTurnoverAmount(stock: StockSnapshot): number {
+function estimateFallbackTurnover(stock: StockSnapshot): number {
   const cap = stock.floatMarketCap || stock.totalMarketCap || stock.price * 1_000_000;
   const activityRatio = 0.012 + Math.min(Math.abs(stock.changePct), 10) * 0.002;
   return Math.round(cap * activityRatio);
 }
 
 /** 判断一只股票是否属于指定市场范围 */
-function inMarket(stock: StockSnapshot, market: MarketKey): boolean {
+function isInMarketScope(stock: StockSnapshot, market: MarketKey): boolean {
   if (market === "all") return true;
   if (market === "sse") return stock.exchange === "SH";
   if (market === "szse") return stock.exchange === "SZ";
@@ -365,12 +365,12 @@ function inMarket(stock: StockSnapshot, market: MarketKey): boolean {
 }
 
 /** 按市场范围筛选股票 */
-function filterStocks(stocks: StockSnapshot[], market: MarketKey): StockSnapshot[] {
-  return stocks.filter((stock) => inMarket(stock, market));
+function filterByMarketScope(stocks: StockSnapshot[], market: MarketKey): StockSnapshot[] {
+  return stocks.filter((stock) => isInMarketScope(stock, market));
 }
 
 /** 把板块名转成哈希 code（用于前端 key） */
-function toBoardCode(name: string): string {
+function boardNameToCode(name: string): string {
   return name
     .split("")
     .reduce((hash, ch) => (hash * 33 + ch.charCodeAt(0)) >>> 0, 5381)
@@ -379,13 +379,13 @@ function toBoardCode(name: string): string {
 }
 
 /** 把 "600519.SH" 转成新浪格式 "sh600519" */
-function toSinaSymbol(code: string): string {
+function codeToSinaSymbol(code: string): string {
   const [symbol, exchange] = code.split(".");
   return `${exchange.toLowerCase()}${symbol}`;
 }
 
 /** 把新浪格式 "sh600519" 转成 "600519.SH" */
-function parseSinaCode(symbol: string): string | null {
+function decodeSinaSymbol(symbol: string): string | null {
   if (symbol.startsWith("sh")) return `${symbol.slice(2)}.SH`;
   if (symbol.startsWith("sz")) return `${symbol.slice(2)}.SZ`;
   if (symbol.startsWith("bj")) return `${symbol.slice(2)}.BJ`;
@@ -395,7 +395,7 @@ function parseSinaCode(symbol: string): string | null {
 // ============ 新浪行情解析 ============
 
 /** 解析新浪批量行情返回的文本 */
-function parseSinaQuoteBatch(rawText: string) {
+function parseSinaQuotes(rawText: string) {
   const quotes: Record<string, RemoteQuoteValue> = {};
   let updatedAt = "";
   const pattern = /var hq_str_([a-z]{2}\d+)="([^"]*)";/g;
@@ -404,15 +404,15 @@ function parseSinaQuoteBatch(rawText: string) {
   const decoder = new TextDecoder("latin1");
 
   for (const match of rawText.matchAll(pattern)) {
-    const code = parseSinaCode(match[1]);
+    const code = decodeSinaSymbol(match[1]);
     if (!code) continue;
 
     const fields = match[2].split(",");
     if (fields.length < 32) continue;
 
-    const price = toNumber(fields[3]);
-    const previousClose = toNumber(fields[2]);
-    const turnoverAmount = toNumber(fields[9]);
+    const price = safeNumber(fields[3]);
+    const previousClose = safeNumber(fields[2]);
+    const turnoverAmount = safeNumber(fields[9]);
 
     if (price <= 0 || previousClose <= 0) continue;
 
@@ -424,7 +424,7 @@ function parseSinaQuoteBatch(rawText: string) {
     };
 
     if (!updatedAt) {
-      updatedAt = parseSinaTimestamp(fields[30], fields[31]);
+      updatedAt = formatSinaTime(fields[30], fields[31]);
     }
   }
 
@@ -437,7 +437,7 @@ function parseSinaQuoteBatch(rawText: string) {
 // ============ 东方财富行情解析 ============
 
 /** 解析东方财富批量行情返回的 JSON */
-function parseEastmoneyQuoteBatch(payload: unknown) {
+function parseEastmoneyQuotes(payload: unknown) {
   const quotes: Record<string, RemoteQuoteValue> = {};
   let updatedAt = "";
   const diff = (payload as { data?: { diff?: unknown[] } }).data?.diff;
@@ -448,19 +448,19 @@ function parseEastmoneyQuoteBatch(payload: unknown) {
 
   for (const item of diff) {
     const row = item as Record<string, number | string | undefined>;
-    const code = parseEastmoneyCode(row.f12, row.f13);
+    const code = decodeEastmoneySymbol(row.f12, row.f13);
     if (!code) continue;
 
-    const price = toFiniteNumber(row.f2) ?? 0;
-    const previousClose = toFiniteNumber(row.f18) ?? 0;
+    const price = parseFiniteValue(row.f2) ?? 0;
+    const previousClose = parseFiniteValue(row.f18) ?? 0;
     if (price <= 0) continue;
 
     const dayChangePct =
-      toFiniteNumber(row.f3) ?? (previousClose > 0 ? ((price - previousClose) / previousClose) * 100 : 0);
-    const weekChangePct = toFiniteNumber(row.f109) ?? dayChangePct;
-    const monthChangePct = toFiniteNumber(row.f110) ?? toFiniteNumber(row.f24) ?? dayChangePct;
-    const yearChangePct = toFiniteNumber(row.f25) ?? dayChangePct;
-    const turnoverAmount = toFiniteNumber(row.f6) ?? 0;
+      parseFiniteValue(row.f3) ?? (previousClose > 0 ? ((price - previousClose) / previousClose) * 100 : 0);
+    const weekChangePct = parseFiniteValue(row.f109) ?? dayChangePct;
+    const monthChangePct = parseFiniteValue(row.f110) ?? parseFiniteValue(row.f24) ?? dayChangePct;
+    const yearChangePct = parseFiniteValue(row.f25) ?? dayChangePct;
+    const turnoverAmount = parseFiniteValue(row.f6) ?? 0;
 
     quotes[code] = {
       price,
@@ -473,7 +473,7 @@ function parseEastmoneyQuoteBatch(payload: unknown) {
       turnoverAmount,
     };
 
-    const timestamp = parseEastmoneyTimestamp(row.f124);
+    const timestamp = formatEastmoneyTime(row.f124);
     if (timestamp && (!updatedAt || timestamp > updatedAt)) {
       updatedAt = timestamp;
     }
@@ -488,7 +488,7 @@ function parseEastmoneyQuoteBatch(payload: unknown) {
 // ============ 网络请求函数 ============
 
 /** 从新浪拉取一批股票行情 */
-async function fetchSinaQuoteBatch(symbols: string[]): Promise<{ updatedAt: string; quotes: Record<string, RemoteQuoteValue> }> {
+async function fetchSinaQuotes(symbols: string[]): Promise<{ updatedAt: string; quotes: Record<string, RemoteQuoteValue> }> {
   const response = await fetch(`${sinaQuoteBaseUrl}${symbols.join(",")}`, {
     headers: sinaRequestHeaders,
     next: { revalidate: 0 },
@@ -502,11 +502,11 @@ async function fetchSinaQuoteBatch(symbols: string[]): Promise<{ updatedAt: stri
 
   // 改进：用 TextDecoder 替代 Buffer，兼容 Edge Runtime
   const rawText = new TextDecoder("latin1").decode(await response.arrayBuffer());
-  return parseSinaQuoteBatch(rawText);
+  return parseSinaQuotes(rawText);
 }
 
 /** 从东方财富拉取一批股票行情 */
-async function fetchEastmoneyQuoteBatch(secids: string[]): Promise<{ updatedAt: string; quotes: Record<string, RemoteQuoteValue> }> {
+async function fetchEastmoneyQuotes(secids: string[]): Promise<{ updatedAt: string; quotes: Record<string, RemoteQuoteValue> }> {
   const params = new URLSearchParams({
     secids: secids.join(","),
     ut: "bd1d9ddb04089700cf9c27f6f7426281",
@@ -525,13 +525,13 @@ async function fetchEastmoneyQuoteBatch(secids: string[]): Promise<{ updatedAt: 
     throw new Error(`Eastmoney quote request failed: ${response.status}`);
   }
 
-  return parseEastmoneyQuoteBatch(await response.json());
+  return parseEastmoneyQuotes(await response.json());
 }
 
 // ============ 指数行情 ============
 
 /** 解析新浪指数行情 */
-function parseSinaIndexBatch(rawText: string) {
+function parseSinaIndexData(rawText: string) {
   const symbolToMarket = new Map(
     Object.entries(marketIndexSymbols).map(([market, symbol]) => [symbol, market as MarketKey])
   );
@@ -546,8 +546,8 @@ function parseSinaIndexBatch(rawText: string) {
     if (fields.length < 4) continue;
 
     const name = fields[0]?.trim();
-    const price = toNumber(fields[1]);
-    const changePct = toNumber(fields[3]);
+    const price = safeNumber(fields[1]);
+    const changePct = safeNumber(fields[3]);
 
     if (!name || price <= 0 || !Number.isFinite(changePct)) continue;
 
@@ -562,7 +562,7 @@ function parseSinaIndexBatch(rawText: string) {
 }
 
 /** 解析东方财富指数行情 */
-function parseEastmoneyIndexBatch(payload: unknown) {
+function parseEastmoneyIndexData(payload: unknown) {
   const secidToMarket = new Map(
     Object.entries(marketIndexSecids).map(([market, secid]) => [secid, market as MarketKey])
   );
@@ -579,8 +579,8 @@ function parseEastmoneyIndexBatch(payload: unknown) {
     if (!market) continue;
 
     const name = String(row.f14 ?? "").trim();
-    const price = toFiniteNumber(row.f2) ?? 0;
-    const dayChangePct = toFiniteNumber(row.f3);
+    const price = parseFiniteValue(row.f2) ?? 0;
+    const dayChangePct = parseFiniteValue(row.f3);
 
     if (!name || price <= 0 || dayChangePct === null) continue;
 
@@ -589,9 +589,9 @@ function parseEastmoneyIndexBatch(payload: unknown) {
       price,
       changes: {
         day: dayChangePct,
-        week: toFiniteNumber(row.f109) ?? dayChangePct,
-        month: toFiniteNumber(row.f110) ?? toFiniteNumber(row.f24) ?? dayChangePct,
-        year: toFiniteNumber(row.f25) ?? dayChangePct,
+        week: parseFiniteValue(row.f109) ?? dayChangePct,
+        month: parseFiniteValue(row.f110) ?? parseFiniteValue(row.f24) ?? dayChangePct,
+        year: parseFiniteValue(row.f25) ?? dayChangePct,
       },
     };
   }
@@ -600,7 +600,7 @@ function parseEastmoneyIndexBatch(payload: unknown) {
 }
 
 /** 从东方财富拉取指数快照 */
-async function fetchEastmoneyMarketIndexSnapshot(): Promise<MarketIndexSnapshot> {
+async function fetchEastmoneyMarketIndex(): Promise<MarketIndexSnapshot> {
   const params = new URLSearchParams({
     secids: Object.values(marketIndexSecids).join(","),
     ut: "bd1d9ddb04089700cf9c27f6f7426281",
@@ -619,7 +619,7 @@ async function fetchEastmoneyMarketIndexSnapshot(): Promise<MarketIndexSnapshot>
     throw new Error(`Eastmoney index request failed: ${response.status}`);
   }
 
-  const summaries = parseEastmoneyIndexBatch(await response.json());
+  const summaries = parseEastmoneyIndexData(await response.json());
 
   if (Object.keys(summaries).length < marketKeys.length * 0.75) {
     throw new Error("Eastmoney index snapshot is incomplete");
@@ -634,7 +634,7 @@ async function fetchEastmoneyMarketIndexSnapshot(): Promise<MarketIndexSnapshot>
 }
 
 /** 从新浪拉取指数快照 */
-async function fetchSinaMarketIndexSnapshot(): Promise<MarketIndexSnapshot> {
+async function fetchSinaMarketIndex(): Promise<MarketIndexSnapshot> {
   const symbols = Object.values(marketIndexSymbols).map((symbol) => `s_${symbol}`);
   const response = await fetch(`${sinaQuoteBaseUrl}${symbols.join(",")}`, {
     headers: sinaRequestHeaders,
@@ -648,7 +648,7 @@ async function fetchSinaMarketIndexSnapshot(): Promise<MarketIndexSnapshot> {
   }
 
   const rawText = new TextDecoder("latin1").decode(await response.arrayBuffer());
-  const summaries = parseSinaIndexBatch(rawText);
+  const summaries = parseSinaIndexData(rawText);
 
   if (Object.keys(summaries).length < marketKeys.length * 0.75) {
     throw new Error("Sina index snapshot is incomplete");
@@ -663,19 +663,19 @@ async function fetchSinaMarketIndexSnapshot(): Promise<MarketIndexSnapshot> {
 }
 
 /** 指数快照：东方财富 → 新浪 */
-async function fetchMarketIndexSnapshot(): Promise<MarketIndexSnapshot> {
+async function fetchMarketIndex(): Promise<MarketIndexSnapshot> {
   try {
-    return await fetchEastmoneyMarketIndexSnapshot();
+    return await fetchEastmoneyMarketIndex();
   } catch {
-    return fetchSinaMarketIndexSnapshot();
+    return fetchSinaMarketIndex();
   }
 }
 
 // ============ 行情快照（所有个股） ============
 
 /** 从远程拉取全市场行情快照（东方财富 → 新浪 → 抛异常触发兜底） */
-async function fetchQuoteSnapshotFromRemote(): Promise<QuoteSnapshot> {
-  const secids = baselineStocks.map((stock) => toEastmoneySecid(stock.code));
+async function fetchQuotesFromRemote(): Promise<QuoteSnapshot> {
+  const secids = baselineStocks.map((stock) => buildEastmoneySecid(stock.code));
   const eastmoneyBatches: string[][] = [];
 
   // 改进：每批 300 只（原项目 180 只）
@@ -685,7 +685,7 @@ async function fetchQuoteSnapshotFromRemote(): Promise<QuoteSnapshot> {
 
   try {
     const eastmoneyResults = await Promise.all(
-      eastmoneyBatches.map((batch) => fetchEastmoneyQuoteBatch(batch))
+      eastmoneyBatches.map((batch) => fetchEastmoneyQuotes(batch))
     );
     const eastmoneyQuotes: Record<string, RemoteQuoteValue> = {};
     let eastmoneyUpdatedAt = "";
@@ -713,14 +713,14 @@ async function fetchQuoteSnapshotFromRemote(): Promise<QuoteSnapshot> {
   }
 
   // 新浪降级：仅当日涨跌幅
-  const symbols = baselineStocks.map((stock) => toSinaSymbol(stock.code));
+  const symbols = baselineStocks.map((stock) => codeToSinaSymbol(stock.code));
   const batches: string[][] = [];
 
   for (let index = 0; index < symbols.length; index += sinaBatchSize) {
     batches.push(symbols.slice(index, index + sinaBatchSize));
   }
 
-  const results = await Promise.all(batches.map((batch) => fetchSinaQuoteBatch(batch)));
+  const results = await Promise.all(batches.map((batch) => fetchSinaQuotes(batch)));
   const quotes: Record<string, RemoteQuoteValue> = {};
   let updatedAt = "";
 
@@ -746,7 +746,7 @@ async function fetchQuoteSnapshotFromRemote(): Promise<QuoteSnapshot> {
 // ============ 市场概览（涨跌家数 + 成交额） ============
 
 /** 从同花顺拉取涨跌家数和成交额 */
-async function fetchMarketSummaryFromRemote(): Promise<MarketSummarySnapshot> {
+async function fetchSummaryFromRemote(): Promise<MarketSummarySnapshot> {
   const [distributionResponse, turnoverResponse] = await Promise.all([
     fetch(upDownDistributionUrl, {
       headers: summaryRequestHeaders,
@@ -771,22 +771,22 @@ async function fetchMarketSummaryFromRemote(): Promise<MarketSummarySnapshot> {
 
   const distribution = (await distributionResponse.json()) as UpDownDistributionResponse;
   const turnover = (await turnoverResponse.json()) as TurnoverResponse;
-  const turnoverAmount = toNumber(
+  const turnoverAmount = safeNumber(
     turnover.data?.charts?.header?.find((item) => item.key === "turnover")?.val
   );
-  const turnoverPreviousAmount = toNumber(
+  const turnoverPreviousAmount = safeNumber(
     turnover.data?.charts?.header?.find((item) => item.key === "turnover_pre")?.val
   );
-  const turnoverDelta = toNumber(
+  const turnoverDelta = safeNumber(
     turnover.data?.charts?.header?.find((item) => item.key === "turnover_change")?.val
   );
 
   return {
     timestamp: Date.now(),
-    updatedAt: parseShanghaiTimestamp(distribution.data?.last_update_time),
-    advanceCount: toNumber(distribution.data?.up),
-    flatCount: toNumber(distribution.data?.flat),
-    declineCount: toNumber(distribution.data?.down),
+    updatedAt: formatShanghaiTime(distribution.data?.last_update_time),
+    advanceCount: safeNumber(distribution.data?.up),
+    flatCount: safeNumber(distribution.data?.flat),
+    declineCount: safeNumber(distribution.data?.down),
     turnoverAmount,
     turnoverPreviousAmount,
     turnoverDelta,
@@ -796,7 +796,7 @@ async function fetchMarketSummaryFromRemote(): Promise<MarketSummarySnapshot> {
 
 // ============ 模块级缓存 + Promise 去重 ============
 
-async function getMarketIndexSnapshot() {
+async function getCachedMarketIndex() {
   const now = Date.now();
 
   if (indexCache && now - indexCache.timestamp < quoteCacheMs) {
@@ -807,7 +807,7 @@ async function getMarketIndexSnapshot() {
     return indexPromise;
   }
 
-  indexPromise = fetchMarketIndexSnapshot()
+  indexPromise = fetchMarketIndex()
     .then((snapshot) => {
       indexCache = snapshot;
       return snapshot;
@@ -823,7 +823,7 @@ async function getMarketIndexSnapshot() {
   return indexPromise;
 }
 
-async function getQuoteSnapshot() {
+async function getCachedQuotes() {
   const now = Date.now();
 
   if (quoteCache && now - quoteCache.timestamp < quoteCacheMs) {
@@ -834,7 +834,7 @@ async function getQuoteSnapshot() {
     return quotePromise;
   }
 
-  quotePromise = fetchQuoteSnapshotFromRemote()
+  quotePromise = fetchQuotesFromRemote()
     .then((snapshot) => {
       quoteCache = snapshot;
       return snapshot;
@@ -850,7 +850,7 @@ async function getQuoteSnapshot() {
   return quotePromise;
 }
 
-async function getMarketSummary() {
+async function getCachedSummary() {
   const now = Date.now();
 
   if (summaryCache && now - summaryCache.timestamp < summaryCacheMs) {
@@ -861,7 +861,7 @@ async function getMarketSummary() {
     return summaryPromise;
   }
 
-  summaryPromise = fetchMarketSummaryFromRemote()
+  summaryPromise = fetchSummaryFromRemote()
     .then((snapshot) => {
       summaryCache = snapshot;
       return snapshot;
@@ -880,7 +880,7 @@ async function getMarketSummary() {
 // ============ 数据构建函数 ============
 
 /** 把股票列表按一级行业分组，构建热力图节点树 */
-function buildNodesFromStocks(
+function groupStocksByBoard(
   stocks: StockSnapshot[],
   liveQuotes: Record<string, RemoteQuoteValue>,
   period: HeatmapPeriodKey
@@ -896,11 +896,11 @@ function buildNodesFromStocks(
       name: stock.name,
       boardName: stock.boardName,
       subBoardName: stock.subBoardName,
-      value: getStockValue(stock),
+      value: getStockAreaValue(stock),
       exchange: stock.exchange,
       price: quote?.price ?? stock.price,
-      changePct: getChangeForPeriod(quote?.changes, period, stock.changePct),
-      turnoverAmount: quote?.turnoverAmount ?? getStockTurnoverAmount(stock),
+      changePct: extractPeriodChange(quote?.changes, period, stock.changePct),
+      turnoverAmount: quote?.turnoverAmount ?? getStockTurnover(stock),
     });
 
     boardMap.set(stock.boardName, current);
@@ -912,7 +912,7 @@ function buildNodesFromStocks(
       const total = children.reduce((sum, stock) => sum + stock.value, 0);
 
       return {
-        code: toBoardCode(name),
+        code: boardNameToCode(name),
         name,
         value: total,
         stockCount: children.length,
@@ -923,7 +923,7 @@ function buildNodesFromStocks(
 }
 
 /** 统计涨/平/跌家数和成交额 */
-function summarizeStocks(
+function summarizeMarketBreadth(
   stocks: StockSnapshot[],
   liveQuotes: Record<string, RemoteQuoteValue>,
   period: HeatmapPeriodKey
@@ -935,7 +935,7 @@ function summarizeStocks(
 
   for (const stock of stocks) {
     const quote = liveQuotes[stock.code];
-    const changePct = getChangeForPeriod(quote?.changes, period, stock.changePct);
+    const changePct = extractPeriodChange(quote?.changes, period, stock.changePct);
 
     if (changePct > flatThreshold) {
       advanceCount += 1;
@@ -945,7 +945,7 @@ function summarizeStocks(
       flatCount += 1;
     }
 
-    turnoverAmount += quote?.turnoverAmount ?? getStockTurnoverAmount(stock);
+    turnoverAmount += quote?.turnoverAmount ?? getStockTurnover(stock);
   }
 
   return {
@@ -959,7 +959,7 @@ function summarizeStocks(
 }
 
 /** 加权平均涨跌幅（按市值权重） */
-function weightedChangePct(
+function computeWeightedChange(
   stocks: StockSnapshot[],
   liveQuotes: Record<string, RemoteQuoteValue>,
   period: HeatmapPeriodKey
@@ -968,9 +968,9 @@ function weightedChangePct(
   let totalValue = 0;
 
   for (const stock of stocks) {
-    const value = getStockValue(stock);
+    const value = getStockAreaValue(stock);
     const quote = liveQuotes[stock.code];
-    const changePct = getChangeForPeriod(quote?.changes, period, stock.changePct);
+    const changePct = extractPeriodChange(quote?.changes, period, stock.changePct);
     weightedSum += changePct * value;
     totalValue += value;
   }
@@ -981,23 +981,23 @@ function weightedChangePct(
 // ============ 兜底函数 ============
 
 /** 获取兜底快照（带估算成交额） */
-function getFallbackSnapshot(): StockSnapshot[] {
+function loadFallbackStocks(): StockSnapshot[] {
   return baselineStocks.map((stock) => ({
     ...stock,
-    turnoverAmount: estimateFallbackTurnoverAmount(stock),
+    turnoverAmount: estimateFallbackTurnover(stock),
   }));
 }
 
 /** 兜底 treemap 数据 */
-function getFallbackTreemapData(
+function buildFallbackTreemap(
   market: MarketKey,
   period: HeatmapPeriodKey,
   indexChangePct?: number
 ): TreemapResponse {
-  const snapshot = getFallbackSnapshot();
-  const marketStocks = filterStocks(snapshot, market);
-  const nodes = buildNodesFromStocks(marketStocks, {}, period);
-  const fallbackIndexChangePct = weightedChangePct(marketStocks, {}, period);
+  const snapshot = loadFallbackStocks();
+  const marketStocks = filterByMarketScope(snapshot, market);
+  const nodes = groupStocksByBoard(marketStocks, {}, period);
+  const fallbackIndexChangePct = computeWeightedChange(marketStocks, {}, period);
 
   return {
     market,
@@ -1006,7 +1006,7 @@ function getFallbackTreemapData(
     stockCount: marketStocks.length,
     boardCount: nodes.length,
     summary: {
-      ...summarizeStocks(marketStocks, {}, period),
+      ...summarizeMarketBreadth(marketStocks, {}, period),
       indexChangePct: Number.isFinite(indexChangePct) ? indexChangePct : fallbackIndexChangePct,
     },
     nodes,
@@ -1015,16 +1015,16 @@ function getFallbackTreemapData(
 }
 
 /** 兜底 quotes 数据 */
-function getFallbackQuoteData(market: MarketKey, period: HeatmapPeriodKey): QuotesResponse {
-  const snapshot = getFallbackSnapshot();
-  const marketStocks = filterStocks(snapshot, market);
+function buildFallbackQuotes(market: MarketKey, period: HeatmapPeriodKey): QuotesResponse {
+  const snapshot = loadFallbackStocks();
+  const marketStocks = filterByMarketScope(snapshot, market);
   const quotes: Record<string, QuoteValue> = {};
 
   for (const stock of marketStocks) {
     quotes[stock.code] = {
       price: stock.price,
       changePct: stock.changePct,
-      turnoverAmount: getStockTurnoverAmount(stock) || estimateFallbackTurnoverAmount(stock),
+      turnoverAmount: getStockTurnover(stock) || estimateFallbackTurnover(stock),
     };
   }
 
@@ -1041,12 +1041,12 @@ function getFallbackQuoteData(market: MarketKey, period: HeatmapPeriodKey): Quot
 
 const stocksByMarket: Record<MarketKey, StockSnapshot[]> = {
   all: baselineStocks,
-  sse: baselineStocks.filter((stock) => inMarket(stock, "sse")),
-  szse: baselineStocks.filter((stock) => inMarket(stock, "szse")),
-  hs300: baselineStocks.filter((stock) => inMarket(stock, "hs300")),
-  zza500: baselineStocks.filter((stock) => inMarket(stock, "zza500")),
-  cyb: baselineStocks.filter((stock) => inMarket(stock, "cyb")),
-  kcb: baselineStocks.filter((stock) => inMarket(stock, "kcb")),
+  sse: baselineStocks.filter((stock) => isInMarketScope(stock, "sse")),
+  szse: baselineStocks.filter((stock) => isInMarketScope(stock, "szse")),
+  hs300: baselineStocks.filter((stock) => isInMarketScope(stock, "hs300")),
+  zza500: baselineStocks.filter((stock) => isInMarketScope(stock, "zza500")),
+  cyb: baselineStocks.filter((stock) => isInMarketScope(stock, "cyb")),
+  kcb: baselineStocks.filter((stock) => isInMarketScope(stock, "kcb")),
 };
 
 // ============ 对外接口函数 ============
@@ -1057,14 +1057,14 @@ export async function getTreemapData(
   period: HeatmapPeriodKey = "day"
 ): Promise<TreemapResponse> {
   const [quoteResult, summaryResult, indexResult] = await Promise.allSettled([
-    getQuoteSnapshot(),
-    getMarketSummary(),
-    getMarketIndexSnapshot(),
+    getCachedQuotes(),
+    getCachedSummary(),
+    getCachedMarketIndex(),
   ]);
 
   const remoteIndexSummary =
     indexResult.status === "fulfilled" ? indexResult.value.summaries[market] : null;
-  const remoteIndexChangePct = getChangeForPeriod(remoteIndexSummary?.changes, period, Number.NaN);
+  const remoteIndexChangePct = extractPeriodChange(remoteIndexSummary?.changes, period, Number.NaN);
 
   // 行情拉取失败 → 用兜底数据
   if (quoteResult.status !== "fulfilled") {
@@ -1074,15 +1074,15 @@ export async function getTreemapData(
       });
       hasLoggedFallbackWarning = true;
     }
-    return getFallbackTreemapData(market, period, remoteIndexChangePct);
+    return buildFallbackTreemap(market, period, remoteIndexChangePct);
   }
 
   hasLoggedFallbackWarning = false;
 
   const marketStocks = stocksByMarket[market];
-  const nodes = buildNodesFromStocks(marketStocks, quoteResult.value.quotes, period);
-  const computedSummary = summarizeStocks(marketStocks, quoteResult.value.quotes, period);
-  const computedIndexChangePct = weightedChangePct(marketStocks, quoteResult.value.quotes, period);
+  const nodes = groupStocksByBoard(marketStocks, quoteResult.value.quotes, period);
+  const computedSummary = summarizeMarketBreadth(marketStocks, quoteResult.value.quotes, period);
+  const computedIndexChangePct = computeWeightedChange(marketStocks, quoteResult.value.quotes, period);
   const remoteSummary = summaryResult.status === "fulfilled" ? summaryResult.value : null;
 
   return {
@@ -1124,7 +1124,7 @@ export async function getQuoteData(
   market: MarketKey,
   period: HeatmapPeriodKey = "day"
 ): Promise<QuotesResponse> {
-  const quoteResult = await Promise.allSettled([getQuoteSnapshot()]);
+  const quoteResult = await Promise.allSettled([getCachedQuotes()]);
 
   if (quoteResult[0].status !== "fulfilled") {
     if (!hasLoggedFallbackWarning) {
@@ -1133,7 +1133,7 @@ export async function getQuoteData(
       });
       hasLoggedFallbackWarning = true;
     }
-    return getFallbackQuoteData(market, period);
+    return buildFallbackQuotes(market, period);
   }
 
   hasLoggedFallbackWarning = false;
@@ -1145,8 +1145,8 @@ export async function getQuoteData(
     const quote = quoteResult[0].value.quotes[stock.code];
     quotes[stock.code] = {
       price: quote?.price ?? stock.price,
-      changePct: getChangeForPeriod(quote?.changes, period, stock.changePct),
-      turnoverAmount: quote?.turnoverAmount ?? getStockTurnoverAmount(stock),
+      changePct: extractPeriodChange(quote?.changes, period, stock.changePct),
+      turnoverAmount: quote?.turnoverAmount ?? getStockTurnover(stock),
     };
   }
 
@@ -1164,8 +1164,8 @@ export async function getOverviewData(
   period: HeatmapPeriodKey = "day"
 ): Promise<MarketOverviewResponse> {
   const [quoteResult, indexResult] = await Promise.allSettled([
-    getQuoteSnapshot(),
-    getMarketIndexSnapshot(),
+    getCachedQuotes(),
+    getCachedMarketIndex(),
   ]);
 
   if (quoteResult.status !== "fulfilled") {
@@ -1178,7 +1178,7 @@ export async function getOverviewData(
 
     const fallbackMarkets: MarketOverviewItem[] = marketKeys.map((market) => {
       const stocks = stocksByMarket[market];
-      const changePct = weightedChangePct(stocks, {}, period);
+      const changePct = computeWeightedChange(stocks, {}, period);
       return {
         market,
         changePct: Number.isFinite(changePct) ? changePct : 0,
@@ -1203,10 +1203,10 @@ export async function getOverviewData(
   const markets: MarketOverviewItem[] = marketKeys.map((market) => {
     const stocks = stocksByMarket[market];
     const remoteIndex = indexSummaries?.[market];
-    const remoteIndexChange = getChangeForPeriod(remoteIndex?.changes, period, Number.NaN);
+    const remoteIndexChange = extractPeriodChange(remoteIndex?.changes, period, Number.NaN);
     const changePct = Number.isFinite(remoteIndexChange)
       ? remoteIndexChange
-      : weightedChangePct(stocks, liveQuotes, period);
+      : computeWeightedChange(stocks, liveQuotes, period);
 
     return {
       market,

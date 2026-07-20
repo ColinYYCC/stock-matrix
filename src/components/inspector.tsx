@@ -5,6 +5,7 @@ import { forwardRef } from "react";
 import { cn } from "@/lib/utils";
 import { formatPrice, formatChange } from "@/lib/format";
 import { getChangeTextClass } from "@/lib/heatmap-color";
+import { getSparklineUrl, getDailyKlineUrl } from "@/lib/stock-image";
 import type { HeatmapMessages } from "@/lib/i18n";
 import type { PriceColorMode } from "@/types/heatmap";
 
@@ -17,26 +18,6 @@ type InspectorStock = {
   changePct: number;
   active: boolean;
 };
-
-/** 从股票代码解析出市场和代码 */
-function parseStockCode(code: string) {
-  const [symbol = "", market = "SH"] = code.split(".");
-  return { symbol, market: market.toUpperCase() };
-}
-
-/** 获取东方财富分时图 URL */
-function getSparklineUrl(code: string) {
-  const { symbol, market } = parseStockCode(code);
-  const marketId = market === "SH" ? "1" : "0";
-  return `https://webquotepic.eastmoney.com/GetPic.aspx?nid=${marketId}.${symbol}&imageType=RJY`;
-}
-
-/** 获取新浪日线 K 线图 URL */
-function getDailyKlineUrl(code: string) {
-  const { symbol, market } = parseStockCode(code);
-  const marketPrefix = market === "SH" ? "sh" : market === "SZ" ? "sz" : "bj";
-  return `https://image.sinajs.cn/newchart/daily/n/${marketPrefix}${symbol}.gif`;
-}
 
 /** 悬浮详情面板的样式定位信息 */
 export type InspectorStyle = {
@@ -55,7 +36,6 @@ type InspectorProps = {
   messages: HeatmapMessages;
   priceColorMode: PriceColorMode;
   listMaxHeight: number;
-  onStockClick?: (code: string) => void;
 };
 
 /**
@@ -68,7 +48,7 @@ type InspectorProps = {
  * - 同板块个股列表（按涨跌幅绝对值排序）
  */
 export const Inspector = forwardRef<HTMLDivElement, InspectorProps>(function Inspector(
-  { style, title, stock, stocks, messages, priceColorMode, listMaxHeight, onStockClick },
+  { style, title, stock, stocks, messages, priceColorMode, listMaxHeight },
   listRef
 ) {
   if (!style) return null;
@@ -103,6 +83,7 @@ export const Inspector = forwardRef<HTMLDivElement, InspectorProps>(function Ins
                   loading="lazy"
                   decoding="async"
                   referrerPolicy="no-referrer"
+                  onError={(event) => { event.currentTarget.style.visibility = "hidden"; }}
                 />
               </div>
               <div className="text-right">
@@ -130,6 +111,7 @@ export const Inspector = forwardRef<HTMLDivElement, InspectorProps>(function Ins
               loading="lazy"
               decoding="async"
               referrerPolicy="no-referrer"
+              onError={(event) => { event.currentTarget.style.visibility = "hidden"; }}
             />
           </div>
 
@@ -154,11 +136,9 @@ export const Inspector = forwardRef<HTMLDivElement, InspectorProps>(function Ins
                 return (
                   <div
                     key={item.code}
-                    onClick={() => onStockClick?.(item.code)}
                     className={cn(
                       "grid grid-cols-[minmax(0,1fr)_56px_64px_80px] items-center gap-2 border-b border-slate-300/70 px-3 py-1.5 text-[12.5px]",
-                      isActive && "bg-slate-100",
-                      onStockClick && "cursor-pointer hover:bg-slate-50"
+                      isActive && "bg-slate-100"
                     )}
                   >
                     <span
@@ -176,6 +156,7 @@ export const Inspector = forwardRef<HTMLDivElement, InspectorProps>(function Ins
                       loading="lazy"
                       decoding="async"
                       referrerPolicy="no-referrer"
+                      onError={(event) => { event.currentTarget.style.visibility = "hidden"; }}
                     />
                     <span className="text-right text-[11.5px] font-medium tabular-nums text-slate-700">
                       {formatPrice(item.price)}
