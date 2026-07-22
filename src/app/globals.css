@@ -49,6 +49,26 @@
   --ring: color-mix(in srgb, var(--foreground) 16%, transparent);
   --brand: #ef4444;
   --brand-foreground: #ffffff;
+
+  /* ===== iOS 26 Liquid Glass 亮色变量 ===== */
+  --ios26-bg-start: #eef1f6;
+  --ios26-bg-end: #e2e8f0;
+  --ios26-blobs:
+    radial-gradient(circle at 12% 18%, rgba(239, 68, 68, 0.1), transparent 38%),
+    radial-gradient(circle at 88% 82%, rgba(52, 211, 153, 0.08), transparent 38%),
+    radial-gradient(circle at 72% 12%, rgba(99, 102, 241, 0.08), transparent 35%),
+    radial-gradient(circle at 28% 78%, rgba(168, 85, 247, 0.06), transparent 35%);
+  --ios26-glass-bg: rgba(255, 255, 255, 0.55);
+  --ios26-glass-bg-hover: rgba(255, 255, 255, 0.75);
+  --ios26-glass-bg-active: rgba(255, 255, 255, 0.85);
+  --ios26-glass-border: rgba(0, 0, 0, 0.08);
+  --ios26-glass-border-strong: rgba(0, 0, 0, 0.12);
+  --ios26-glass-shadow: 0 8px 32px rgba(0, 0, 0, 0.08);
+  --ios26-glass-inset-glow: inset 0 1px 0 rgba(255, 255, 255, 0.7);
+  --ios26-text-primary: rgba(0, 0, 0, 0.88);
+  --ios26-text-secondary: rgba(0, 0, 0, 0.5);
+  --ios26-text-tertiary: rgba(0, 0, 0, 0.3);
+  --ios26-canvas-bg: #e9eef5;
 }
 
 .dark {
@@ -73,6 +93,26 @@
   --ring: color-mix(in srgb, var(--foreground) 20%, transparent);
   --brand: #ef4444;
   --brand-foreground: #ffffff;
+
+  /* ===== iOS 26 Liquid Glass 暗色变量 ===== */
+  --ios26-bg-start: #0a0e1a;
+  --ios26-bg-end: #131826;
+  --ios26-blobs:
+    radial-gradient(circle at 12% 18%, rgba(239, 68, 68, 0.18), transparent 38%),
+    radial-gradient(circle at 88% 82%, rgba(52, 211, 153, 0.14), transparent 38%),
+    radial-gradient(circle at 72% 12%, rgba(99, 102, 241, 0.12), transparent 35%),
+    radial-gradient(circle at 28% 78%, rgba(168, 85, 247, 0.1), transparent 35%);
+  --ios26-glass-bg: rgba(255, 255, 255, 0.09);
+  --ios26-glass-bg-hover: rgba(255, 255, 255, 0.14);
+  --ios26-glass-bg-active: rgba(255, 255, 255, 0.18);
+  --ios26-glass-border: rgba(255, 255, 255, 0.14);
+  --ios26-glass-border-strong: rgba(255, 255, 255, 0.22);
+  --ios26-glass-shadow: 0 8px 32px rgba(0, 0, 0, 0.37);
+  --ios26-glass-inset-glow: inset 0 1px 0 rgba(255, 255, 255, 0.15);
+  --ios26-text-primary: rgba(255, 255, 255, 0.95);
+  --ios26-text-secondary: rgba(255, 255, 255, 0.6);
+  --ios26-text-tertiary: rgba(255, 255, 255, 0.4);
+  --ios26-canvas-bg: #10141b;
 }
 
 @layer base {
@@ -103,4 +143,56 @@ body.matrix-page-active {
   height: 100dvh;
   max-height: 100dvh;
   overflow: hidden;
+}
+
+/* ===== iOS 26 Liquid Glass 工具类 ===== */
+/* 当根元素带 data-design="ios26" 时，页面背景换成渐变+彩色光斑，
+   这样毛玻璃面板 blur 时能看到光斑被模糊，玻璃效果才明显 */
+html[data-design="ios26"],
+html[data-design="ios26"] body {
+  background: var(--ios26-blobs), linear-gradient(135deg, var(--ios26-bg-start), var(--ios26-bg-end));
+}
+
+/* 毛玻璃面板：大块面板（侧边栏、设置面板等） */
+.ios26-glass {
+  background: var(--ios26-glass-bg);
+  backdrop-filter: blur(16px) saturate(1.5);
+  -webkit-backdrop-filter: blur(16px) saturate(1.5);
+  border: 1px solid var(--ios26-glass-border);
+  box-shadow: var(--ios26-glass-shadow), var(--ios26-glass-inset-glow);
+}
+
+/* 毛玻璃卡片：小卡片（分组框、统计框等） */
+.ios26-glass-card {
+  background: var(--ios26-glass-bg);
+  border-radius: 14px;
+}
+
+/* 毛玻璃分段控件背景 */
+.ios26-glass-segmented {
+  background: var(--ios26-glass-bg);
+  border-radius: 9px;
+}
+
+/* 毛玻璃激活态（选中时的背景） */
+.ios26-glass-active {
+  background: var(--ios26-glass-bg-active);
+  box-shadow: var(--ios26-glass-inset-glow), 0 0 0 1px var(--ios26-glass-border-strong);
+}
+
+/* 毛玻璃悬停态 */
+.ios26-glass-hover {
+  transition: background 0.2s ease;
+}
+.ios26-glass-hover:hover {
+  background: var(--ios26-glass-bg-hover);
+}
+
+/* 毛玻璃浮动按钮（圆形） */
+.ios26-glass-float {
+  background: var(--ios26-glass-bg-active);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid var(--ios26-glass-border-strong);
+  box-shadow: var(--ios26-glass-shadow), var(--ios26-glass-inset-glow);
 }

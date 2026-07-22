@@ -60,6 +60,12 @@ import {
   type MarketOverviewResponse,
   type ViewState,
 } from "@/types/heatmap";
+import { Sidebar as SidebarIOS26 } from "@/components/ios26/sidebar";
+import { Inspector as InspectorIOS26 } from "@/components/ios26/inspector";
+import { MobileStockSheet as MobileStockSheetIOS26 } from "@/components/ios26/mobile-stock-sheet";
+import { ColorLegend as ColorLegendIOS26 } from "@/components/ios26/color-legend";
+import { SettingsDrawer as SettingsDrawerIOS26 } from "@/components/ios26/settings-drawer";
+import { useDesignStyle, type DesignStyle } from "@/hooks/use-design-style";
 
 // ============ 常量 ============
 
@@ -226,22 +232,26 @@ function SettingsDrawer({
   messages,
   displayMode,
   priceColorMode,
+  designStyle,
+  areaTipMessage,
   onClose,
   onTabChange,
   onDisplayModeChange,
   onPriceColorModeChange,
-  areaTipMessage,
+  onDesignStyleChange,
 }: {
   open: boolean;
   tab: SettingsTab;
   messages: HeatmapMessages;
   displayMode: DisplayMode;
   priceColorMode: PriceColorMode;
+  designStyle: DesignStyle;
   areaTipMessage: string;
   onClose: () => void;
   onTabChange: (tab: SettingsTab) => void;
   onDisplayModeChange: (mode: DisplayMode) => void;
   onPriceColorModeChange: (mode: PriceColorMode) => void;
+  onDesignStyleChange: (style: DesignStyle) => void;
 }) {
   if (!open) return null;
 
@@ -309,6 +319,44 @@ function SettingsDrawer({
           <div className="min-h-0 overflow-y-auto p-4">
             {tab === "appearance" && (
               <div className="space-y-6">
+                {/* 界面风格切换：iOS 26 液态玻璃 / 经典 */}
+                <section>
+                  <h3 className="text-sm font-semibold">界面风格</h3>
+                  <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+                    切换 iOS 26 液态玻璃风格和经典风格
+                  </p>
+                  <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                    <button
+                      type="button"
+                      onClick={() => onDesignStyleChange("ios26")}
+                      aria-pressed={designStyle === "ios26"}
+                      className={cn(
+                        "flex items-center gap-2 border px-3 py-3 text-left text-sm font-semibold transition-colors",
+                        designStyle === "ios26"
+                          ? "border-brand/70 bg-brand/15 text-foreground"
+                          : "border-border bg-background/70 text-muted-foreground hover:bg-muted hover:text-foreground"
+                      )}
+                    >
+                      <span className="size-2.5 rounded-full bg-gradient-to-br from-cyan-400 to-purple-500" />
+                      iOS 26 液态玻璃
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => onDesignStyleChange("classic")}
+                      aria-pressed={designStyle === "classic"}
+                      className={cn(
+                        "flex items-center gap-2 border px-3 py-3 text-left text-sm font-semibold transition-colors",
+                        designStyle === "classic"
+                          ? "border-brand/70 bg-brand/15 text-foreground"
+                          : "border-border bg-background/70 text-muted-foreground hover:bg-muted hover:text-foreground"
+                      )}
+                    >
+                      <span className="size-2.5 rounded-full bg-slate-500" />
+                      经典风格
+                    </button>
+                  </div>
+                </section>
+
                 <section>
                   <h3 className="text-sm font-semibold">{messages.displayMode}</h3>
                   <div className="mt-3 grid gap-2 sm:grid-cols-2">
@@ -436,6 +484,7 @@ export function MarketHeatmap({ locale: initialLocale }: { locale: Locale; messa
   const [priceColorMode, setPriceColorMode] = useState<PriceColorMode>("red-rise");
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settingsTab, setSettingsTab] = useState<SettingsTab>("appearance");
+  const { designStyle, setDesignStyle } = useDesignStyle();
 
   // ============ 数据状态 ============
   const [market, setMarket] = useState<MarketKey>("all");
@@ -468,7 +517,13 @@ export function MarketHeatmap({ locale: initialLocale }: { locale: Locale; messa
 
   // ============ 派生值 ============
   const isLightMode = displayMode === "light";
+  const isIOS26 = designStyle === "ios26";
   const isMobile = useIsMobile();
+  // 根据界面风格选择渲染原版还是 iOS 26 版组件
+  const SidebarComponent = isIOS26 ? SidebarIOS26 : Sidebar;
+  const InspectorComponent = isIOS26 ? InspectorIOS26 : Inspector;
+  const ColorLegendComponent = isIOS26 ? ColorLegendIOS26 : ColorLegend;
+  const MobileStockSheetComponent = isIOS26 ? MobileStockSheetIOS26 : MobileStockSheet;
   const heatmapCanvasTheme = heatmapCanvasThemes[displayMode];
   const brandStyle = useMemo(
     () =>
@@ -1512,7 +1567,8 @@ export function MarketHeatmap({ locale: initialLocale }: { locale: Locale; messa
   return (
     <div
       className={cn(
-        "relative min-h-0 bg-background",
+        "relative min-h-0",
+        isIOS26 ? "" : "bg-background",
         isFullscreen ? "fixed inset-0 z-[9999]" : "flex min-h-0 flex-1 flex-col"
       )}
       style={brandStyle}
@@ -1521,12 +1577,13 @@ export function MarketHeatmap({ locale: initialLocale }: { locale: Locale; messa
         className={cn(
           "grid min-h-0",
           isFullscreen ? "h-full" : "min-h-0 flex-1",
+          isIOS26 && !isFullscreen ? "gap-2 p-2" : "",
           isFullscreen
             ? "grid-cols-[1fr]"
             : "grid-cols-[1fr] grid-rows-[minmax(0,1fr)_auto] md:grid-cols-[148px_minmax(0,1fr)] lg:grid-cols-[162px_minmax(0,1fr)]"
         )}
       >
-        <Sidebar
+        <SidebarComponent
           messages={messages}
           locale={locale}
           market={market}
@@ -1556,19 +1613,24 @@ export function MarketHeatmap({ locale: initialLocale }: { locale: Locale; messa
         <div
           className={cn(
             "relative min-h-0 overflow-hidden",
-            isLightMode ? "bg-[#e9eef5]" : "bg-[#10141b]",
+            isIOS26 && !isFullscreen ? "rounded-3xl border border-[var(--ios26-glass-border)]" : "",
+            isIOS26 ? "" : isLightMode ? "bg-[#e9eef5]" : "bg-[#10141b]",
             isFullscreen ? "col-start-1 h-full" : "col-start-1 row-start-1 md:col-start-2"
           )}
+          style={isIOS26 ? { background: "var(--ios26-canvas-bg)" } : undefined}
         >
           <div
             ref={viewportRef}
-            className={cn("relative h-full min-h-0 overflow-hidden", isLightMode ? "bg-[#e9eef5]" : "bg-[#10141b]")}
+            className={cn("relative h-full min-h-0 overflow-hidden", isIOS26 ? "" : isLightMode ? "bg-[#e9eef5]" : "bg-[#10141b]")}
           >
             {isFullscreen && isMobile && (
               <button
                 type="button"
                 onClick={() => setIsFullscreen(false)}
-                className="absolute right-3 top-3 z-50 inline-flex size-10 items-center justify-center rounded-full border border-slate-500/70 bg-black/50 text-white shadow-[0_10px_24px_rgba(0,0,0,0.28)] backdrop-blur-sm transition-colors hover:bg-black/70"
+                className={cn(
+                  "absolute right-3 top-3 z-50 inline-flex size-10 items-center justify-center rounded-full transition-colors",
+                  isIOS26 ? "ios26-glass-float text-white" : "border border-slate-500/70 bg-black/50 text-white shadow-[0_10px_24px_rgba(0,0,0,0.28)] backdrop-blur-sm hover:bg-black/70"
+                )}
                 aria-label={messages.exitFullscreen}
               >
                 <X className="size-4" />
@@ -1580,7 +1642,10 @@ export function MarketHeatmap({ locale: initialLocale }: { locale: Locale; messa
                 type="button"
                 onClick={() => setSidebarOpen(true)}
                 aria-label={messages.expandSidebar}
-                className="absolute bottom-3 left-3 z-30 inline-flex size-11 items-center justify-center rounded-full border border-slate-500/70 bg-black/50 text-white shadow-[0_10px_24px_rgba(0,0,0,0.35)] backdrop-blur-sm transition-colors hover:bg-black/70 md:hidden"
+                className={cn(
+                  "absolute bottom-3 left-3 z-30 inline-flex size-11 items-center justify-center rounded-full transition-colors md:hidden",
+                  isIOS26 ? "ios26-glass-float text-white" : "border border-slate-500/70 bg-black/50 text-white shadow-[0_10px_24px_rgba(0,0,0,0.35)] backdrop-blur-sm hover:bg-black/70"
+                )}
               >
                 <span className="text-lg">☰</span>
               </button>
@@ -1602,7 +1667,7 @@ export function MarketHeatmap({ locale: initialLocale }: { locale: Locale; messa
             />
 
             {/* 悬浮详情面板 */}
-            <Inspector
+            <InspectorComponent
               ref={inspectorListRef}
               style={inspectorStyle}
               title={activeInspectorTitle}
@@ -1625,7 +1690,7 @@ export function MarketHeatmap({ locale: initialLocale }: { locale: Locale; messa
 
         {/* 底部图例 */}
         {!isFullscreen && (
-          <ColorLegend
+          <ColorLegendComponent
             messages={messages}
             priceColorMode={priceColorMode}
             isLightMode={isLightMode}
@@ -1641,7 +1706,7 @@ export function MarketHeatmap({ locale: initialLocale }: { locale: Locale; messa
 
       {/* 移动端个股详情面板：点击色块后从底部弹出 */}
       {isMobile && selectedBoardName && (
-        <MobileStockSheet
+        <MobileStockSheetComponent
           title={activeInspectorTitle ?? selectedBoardName}
           stock={activeInspectorStock}
           stocks={inspectorStocks}
@@ -1653,19 +1718,38 @@ export function MarketHeatmap({ locale: initialLocale }: { locale: Locale; messa
         />
       )}
 
-      {/* 设置面板 */}
-      <SettingsDrawer
-        open={settingsOpen}
-        tab={settingsTab}
-        messages={messages}
-        displayMode={displayMode}
-        priceColorMode={priceColorMode}
-        areaTipMessage={areaTipMessage}
-        onClose={() => setSettingsOpen(false)}
-        onTabChange={setSettingsTab}
-        onDisplayModeChange={setDisplayMode}
-        onPriceColorModeChange={setPriceColorMode}
-      />
+      {/* 设置面板：iOS 26 风格和经典风格各自有独立组件 */}
+      {isIOS26 ? (
+        <SettingsDrawerIOS26
+          open={settingsOpen}
+          tab={settingsTab}
+          messages={messages}
+          displayMode={displayMode}
+          priceColorMode={priceColorMode}
+          designStyle={designStyle}
+          areaTipMessage={areaTipMessage}
+          onClose={() => setSettingsOpen(false)}
+          onTabChange={setSettingsTab}
+          onDisplayModeChange={setDisplayMode}
+          onPriceColorModeChange={setPriceColorMode}
+          onDesignStyleChange={setDesignStyle}
+        />
+      ) : (
+        <SettingsDrawer
+          open={settingsOpen}
+          tab={settingsTab}
+          messages={messages}
+          displayMode={displayMode}
+          priceColorMode={priceColorMode}
+          designStyle={designStyle}
+          areaTipMessage={areaTipMessage}
+          onClose={() => setSettingsOpen(false)}
+          onTabChange={setSettingsTab}
+          onDisplayModeChange={setDisplayMode}
+          onPriceColorModeChange={setPriceColorMode}
+          onDesignStyleChange={setDesignStyle}
+        />
+      )}
     </div>
   );
 }

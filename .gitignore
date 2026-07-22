@@ -32,3 +32,5 @@ graphify-out/
 
 # macOS 系统自动生成的垃圾文件（._ 开头）
 ._*
+# CatPaw 工具配置（非项目代码，不提交）
+.catpaw/
