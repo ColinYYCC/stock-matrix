@@ -11,7 +11,7 @@
  */
 
 /** 北京时间相对 UTC 的偏移量（毫秒） */
-const CST_OFFSET_MS = 8 * 60 * 60 * 1000;
+export const CST_OFFSET_MS = 8 * 60 * 60 * 1000;
 
 /** 上午开盘 09:30 → 570 分钟 */
 const MORNING_START = 9 * 60 + 30;

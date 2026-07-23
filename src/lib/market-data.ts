@@ -13,6 +13,7 @@
 import fallbackMarketSnapshot from "@/lib/data/stocks-fallback.json";
 import subboardSnapshot from "@/lib/data/subboards.json";
 import indexConstituents from "@/lib/data/index-constituents.json";
+import { CST_OFFSET_MS } from "@/lib/trading-hours";
 import {
   type ExchangeCode,
   type HeatmapBoardNode,
