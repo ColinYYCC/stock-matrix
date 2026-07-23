@@ -32,10 +32,11 @@ import { cn } from "@/lib/utils";
 import { clamp, formatCompactChange } from "@/lib/format";
 import { getLegendGradient } from "@/lib/heatmap-color";
 import { getSparklineUrl, getDailyKlineUrl } from "@/lib/stock-image";
-import { drawHeatmap, heatmapCanvasThemes } from "@/lib/canvas-render";
+import { drawHeatmap, drawHeatmapHighlight, heatmapCanvasThemes } from "@/lib/canvas-render";
 import { binaryTreemap } from "@/lib/treemap";
 import { getMessages, type HeatmapMessages } from "@/lib/i18n";
 import { usePollWhileVisible } from "@/hooks/use-poll-while-visible";
+import { useTradingHours } from "@/hooks/use-trading-hours";
 import { useIsMobile } from "@/hooks/use-is-mobile";
 import {
   clampOffset,
@@ -69,8 +70,10 @@ import { useDesignStyle, type DesignStyle } from "@/hooks/use-design-style";
 
 // ============ 常量 ============
 
-/** 数据轮询间隔：8 秒 */
+/** 交易时段轮询间隔：8 秒 */
 const refreshIntervalMs = 8000;
+/** 非交易时段轮询间隔：60 秒（行情不会变化，低频刷新即可，主要避免 fallback 数据长期停留） */
+const idleRefreshIntervalMs = 60_000;
 /** 平盘阈值 */
 const flatThreshold = 0.1;
 /** 全部板块 / 全部趋势的筛选值 */
@@ -498,6 +501,8 @@ export function MarketHeatmap({ locale: initialLocale }: { locale: Locale; messa
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [updatedAt, setUpdatedAt] = useState("");
+  /** 客户端最后一次成功轮询的时间戳（ms），用于显示"X秒前"相对时间 */
+  const [lastPollAt, setLastPollAt] = useState<number>(0);
 
   // ============ 交互状态 ============
   const [canvasSize, setCanvasSize] = useState({ width: 1200, height: 760 });
@@ -631,6 +636,7 @@ export function MarketHeatmap({ locale: initialLocale }: { locale: Locale; messa
       const payload = (await response.json()) as TreemapResponse;
       setTreemapData(payload);
       setUpdatedAt(payload.updatedAt);
+      setLastPollAt(Date.now());
     },
     [messages.errorLoad]
   );
@@ -642,6 +648,7 @@ export function MarketHeatmap({ locale: initialLocale }: { locale: Locale; messa
       const payload = (await response.json()) as { updatedAt: string; quotes: QuoteMap };
       setQuotes(payload.quotes);
       setUpdatedAt(payload.updatedAt);
+      setLastPollAt(Date.now());
     },
     [messages.errorLoad]
   );
@@ -682,19 +689,25 @@ export function MarketHeatmap({ locale: initialLocale }: { locale: Locale; messa
     return () => { cancelled = true; };
   }, [fetchTreemap, market, messages.errorLoad, period]);
 
+  // ============ 交易时段判断 ============
+  const isTrading = useTradingHours();
+  // 交易时段 8 秒刷新，非交易时段 60 秒低频刷新
+  // 非交易时段仍保持轮询，确保 fallback 数据被及时替换为实时数据
+  const pollInterval = isTrading ? refreshIntervalMs : idleRefreshIntervalMs;
+
   // ============ 轮询行情和概览 ============
   usePollWhileVisible(
     useCallback(async () => {
       try { await fetchQuotes(market, period); } catch { setError(messages.errorLoad); }
     }, [fetchQuotes, market, messages.errorLoad, period]),
-    refreshIntervalMs
+    pollInterval,
   );
 
   usePollWhileVisible(
     useCallback(async () => {
       try { await fetchMarketSummaries(period); } catch { /* 保持现有数据 */ }
     }, [fetchMarketSummaries, period]),
-    refreshIntervalMs
+    pollInterval,
   );
 
   // ============ 筛选 ============
@@ -1141,10 +1154,19 @@ export function MarketHeatmap({ locale: initialLocale }: { locale: Locale; messa
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [inspectorStocks.length, inspectorStyle]);
 
-  // ============ Canvas 绘制（用 requestAnimationFrame 推迟，不卡住主线程） ============
-  // 性能优化：把 Canvas 绘制放到下一帧执行，让浏览器先把 UI 变化（如加载遮罩）画出来
-  // 这样切换市场/板块时不会"冻住"，用户能立即看到响应
+  // ============ Canvas 绘制（离屏缓存 + requestAnimationFrame） ============
+  // 性能优化：
+  // 1. 把完整热力图（不含高亮）画到离屏 canvas，只在数据/布局/视图变化时重绘
+  // 2. 鼠标悬停只改变高亮时，直接从离屏复制 + 画高亮，不重画 5443 个色块
   const drawFrameRef = useRef<number | null>(null);
+  const offscreenRef = useRef<HTMLCanvasElement | null>(null);
+  const baseDirtyRef = useRef(true);
+
+  // 非高亮依赖变化时，标记离屏底图需要重绘
+  useEffect(() => {
+    baseDirtyRef.current = true;
+  }, [canvasSize.height, canvasSize.width, heatmapCanvasTheme, layout.boardRects, layout.stockRects, layout.subBoardRects, priceColorMode, view.scale, view.x, view.y]);
+
   useEffect(() => {
     // 取消上一帧还没执行的绘制（多次状态变化合并成一次绘制）
     if (drawFrameRef.current !== null) {
@@ -1158,16 +1180,41 @@ export function MarketHeatmap({ locale: initialLocale }: { locale: Locale; messa
       if (!context) return;
 
       const pixelRatio = Math.max(1, Math.min(window.devicePixelRatio || 1, 2));
-      canvas.width = Math.floor(canvasSize.width * pixelRatio);
-      canvas.height = Math.floor(canvasSize.height * pixelRatio);
-      canvas.style.width = `${canvasSize.width}px`;
-      canvas.style.height = `${canvasSize.height}px`;
-      drawHeatmap({
-        context, canvasWidth: canvasSize.width, canvasHeight: canvasSize.height, pixelRatio, view,
-        theme: heatmapCanvasTheme, priceColorMode,
-        stockRects: layout.stockRects, boardRects: layout.boardRects, subBoardRects: layout.subBoardRects,
-        highlightedStock, activeBoardName, activeSubBoardName,
-      });
+      const targetWidth = Math.floor(canvasSize.width * pixelRatio);
+      const targetHeight = Math.floor(canvasSize.height * pixelRatio);
+
+      // 离屏 canvas：只在底图脏时重绘（不含高亮）
+      const offscreen = offscreenRef.current ?? (offscreenRef.current = document.createElement("canvas"));
+      if (baseDirtyRef.current) {
+        baseDirtyRef.current = false;
+        offscreen.width = targetWidth;
+        offscreen.height = targetHeight;
+        const offCtx = offscreen.getContext("2d");
+        if (!offCtx) return;
+        drawHeatmap({
+          context: offCtx, canvasWidth: canvasSize.width, canvasHeight: canvasSize.height, pixelRatio, view,
+          theme: heatmapCanvasTheme, priceColorMode,
+          stockRects: layout.stockRects, boardRects: layout.boardRects, subBoardRects: layout.subBoardRects,
+          highlightedStock: null, activeBoardName: null, activeSubBoardName: null,
+        });
+      }
+
+      // 把离屏底图复制到可见 canvas
+      if (canvas.width !== targetWidth || canvas.height !== targetHeight) {
+        canvas.width = targetWidth;
+        canvas.height = targetHeight;
+        canvas.style.width = `${canvasSize.width}px`;
+        canvas.style.height = `${canvasSize.height}px`;
+      }
+      context.drawImage(offscreen, 0, 0);
+
+      // 在底图上画高亮（只画描边，不重画色块）
+      if (highlightedStock || activeBoardRect || activeSubBoardRect) {
+        drawHeatmapHighlight({
+          context, pixelRatio, view, theme: heatmapCanvasTheme,
+          highlightedStock, activeBoardRect, activeSubBoardRect,
+        });
+      }
     });
     return () => {
       if (drawFrameRef.current !== null) {
@@ -1176,16 +1223,11 @@ export function MarketHeatmap({ locale: initialLocale }: { locale: Locale; messa
       }
     };
   }, [
-    canvasSize.height, canvasSize.width, activeBoardName, activeSubBoardName, highlightedStock,
-    heatmapCanvasTheme, layout.boardRects, layout.subBoardRects, layout.stockRects, priceColorMode,
-    view.scale, view.x, view.y,
+    canvasSize.height, canvasSize.width, heatmapCanvasTheme, layout.boardRects, layout.stockRects, layout.subBoardRects, priceColorMode, view.scale, view.x, view.y,
+    highlightedStock, activeBoardRect, activeSubBoardRect,
   ]);
 
   // ============ 鼠标事件 ============
-  // 节流：用 requestAnimationFrame 合并鼠标移动事件，避免每秒 60+ 次命中检测
-  const hoverFrameRef = useRef<number | null>(null);
-  const lastPointerRef = useRef({ x: 0, y: 0 });
-
   const onMouseMove = useCallback((event: ReactMouseEvent<HTMLCanvasElement>) => {
     if (isMobile) return;
     const canvas = canvasRef.current;
@@ -1194,7 +1236,7 @@ export function MarketHeatmap({ locale: initialLocale }: { locale: Locale; messa
     const pointerX = event.clientX - bounds.left;
     const pointerY = event.clientY - bounds.top;
 
-    // 拖拽平移不走节流，需要即时响应
+    // 拖拽平移
     if (dragStateRef.current.active) {
       const deltaX = event.clientX - dragStateRef.current.pointerX;
       const deltaY = event.clientY - dragStateRef.current.pointerY;
@@ -1208,36 +1250,19 @@ export function MarketHeatmap({ locale: initialLocale }: { locale: Locale; messa
       return;
     }
 
-    // 记录鼠标位置，用 rAF 合并到一帧只做一次命中检测
-    lastPointerRef.current = { x: pointerX, y: pointerY };
-    if (hoverFrameRef.current === null) {
-      hoverFrameRef.current = requestAnimationFrame(() => {
-        hoverFrameRef.current = null;
-        const px = lastPointerRef.current.x;
-        const py = lastPointerRef.current.y;
-        const world = toWorldPoint(px, py);
-        const stock = pickFunctions.pickStock(world.x, world.y);
-        const boardTitle = stock ? null : pickFunctions.pickBoardTitle(world.x, world.y);
-        const subBoard = stock ? { name: stock.subBoardName, boardName: stock.boardName } : pickFunctions.pickSubBoard(world.x, world.y);
-        const board = stock ? { name: stock.boardName } : subBoard ? { name: subBoard.boardName } : pickFunctions.pickBoard(world.x, world.y);
+    // 命中检测：同步执行，省掉一帧 rAF 延迟，让悬停更跟手
+    // React 18 会自动批量事件处理器内的 setState，4 次 setState 只触发一次重渲染
+    const world = toWorldPoint(pointerX, pointerY);
+    const stock = pickFunctions.pickStock(world.x, world.y);
+    const boardTitle = stock ? null : pickFunctions.pickBoardTitle(world.x, world.y);
+    const subBoard = stock ? { name: stock.subBoardName, boardName: stock.boardName } : pickFunctions.pickSubBoard(world.x, world.y);
+    const board = stock ? { name: stock.boardName } : subBoard ? { name: subBoard.boardName } : pickFunctions.pickBoard(world.x, world.y);
 
-        setHoveredStockCode(stock?.code ?? null);
-        setHoveredBoardName(board?.name ?? null);
-        setHoveredBoardTitleName(boardTitle?.name ?? null);
-        setHoveredSubBoardName(subBoard?.name || null);
-      });
-    }
+    setHoveredStockCode(stock?.code ?? null);
+    setHoveredBoardName(board?.name ?? null);
+    setHoveredBoardTitleName(boardTitle?.name ?? null);
+    setHoveredSubBoardName(subBoard?.name || null);
   }, [canvasSize.height, canvasSize.width, isMobile, pickFunctions, toWorldPoint, dragStateRef]);
-
-  // 清理节流帧
-  useEffect(() => {
-    return () => {
-      if (hoverFrameRef.current !== null) {
-        cancelAnimationFrame(hoverFrameRef.current);
-        hoverFrameRef.current = null;
-      }
-    };
-  }, []);
 
   const onMouseDown = useCallback((event: ReactMouseEvent<HTMLCanvasElement>) => {
     if (isMobile || view.scale <= 1) return;
@@ -1596,6 +1621,8 @@ export function MarketHeatmap({ locale: initialLocale }: { locale: Locale; messa
           treemapData={treemapData}
           marketOverview={marketOverview}
           updatedAt={updatedAt}
+          lastPollAt={lastPollAt}
+          isTrading={isTrading}
           sidebarOpen={sidebarOpen}
           isFullscreen={isFullscreen}
           onMarketChange={(m) => { setMarket(m); if (isMobile) setSidebarOpen(false); }}

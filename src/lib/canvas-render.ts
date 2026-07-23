@@ -408,3 +408,79 @@ export function drawHeatmap(params: DrawHeatmapParams) {
 
   context.restore();
 }
+
+// ============ 高亮叠加绘制 ============
+
+/**
+ * 只画高亮描边（活跃板块边框 + 活跃二级行业边框 + 高亮个股双层描边）
+ *
+ * 用于离屏缓存方案：完整热力图（不含高亮）先画到离屏 canvas，
+ * 鼠标悬停变化时直接把离屏内容复制到可见 canvas，再调用本函数画高亮。
+ * 这样鼠标移动时不需要重画 5443 个色块，只画几个描边即可。
+ *
+ * 调用前可见 canvas 上应该已经有完整的热力图底图。
+ */
+export type DrawHeatmapHighlightParams = {
+  context: CanvasRenderingContext2D;
+  pixelRatio: number;
+  view: { scale: number; x: number; y: number };
+  theme: (typeof heatmapCanvasThemes)[DisplayMode];
+  highlightedStock: StockRect | null;
+  activeBoardRect: BoardRect | null;
+  activeSubBoardRect: SubBoardRect | null;
+};
+
+export function drawHeatmapHighlight(params: DrawHeatmapHighlightParams) {
+  const { context, pixelRatio, view, theme, highlightedStock, activeBoardRect, activeSubBoardRect } = params;
+
+  context.save();
+  context.scale(pixelRatio, pixelRatio);
+  context.translate(view.x, view.y);
+  context.scale(view.scale, view.scale);
+
+  // 活跃二级行业边框（teal + 内框）
+  if (activeSubBoardRect) {
+    context.strokeStyle = "#5eead4";
+    context.lineWidth = 2;
+    context.strokeRect(
+      activeSubBoardRect.x + 0.5, activeSubBoardRect.y + 0.5,
+      Math.max(0, activeSubBoardRect.width - 1), Math.max(0, activeSubBoardRect.height - 1),
+    );
+
+    context.strokeStyle = theme.activeSubBoardInner;
+    context.lineWidth = 0.8;
+    context.strokeRect(
+      activeSubBoardRect.x + 2.2, activeSubBoardRect.y + 2.2,
+      Math.max(0, activeSubBoardRect.width - 4.4), Math.max(0, activeSubBoardRect.height - 4.4),
+    );
+  }
+
+  // 活跃板块边框（金色）
+  if (activeBoardRect) {
+    context.strokeStyle = "#f6d36d";
+    context.lineWidth = 1.8;
+    context.strokeRect(
+      activeBoardRect.x + 0.5, activeBoardRect.y + 0.5,
+      Math.max(0, activeBoardRect.width - 1), Math.max(0, activeBoardRect.height - 1),
+    );
+  }
+
+  // 高亮个股（双层描边）
+  if (highlightedStock) {
+    context.strokeStyle = theme.highlightOuter;
+    context.lineWidth = 4;
+    context.strokeRect(
+      highlightedStock.x + 1, highlightedStock.y + 1,
+      Math.max(0, highlightedStock.width - 2), Math.max(0, highlightedStock.height - 2),
+    );
+
+    context.strokeStyle = theme.highlightInner;
+    context.lineWidth = 2;
+    context.strokeRect(
+      highlightedStock.x + 1, highlightedStock.y + 1,
+      Math.max(0, highlightedStock.width - 2), Math.max(0, highlightedStock.height - 2),
+    );
+  }
+
+  context.restore();
+}

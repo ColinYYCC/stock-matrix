@@ -321,12 +321,15 @@ function formatShanghaiTime(value: string | undefined): string {
   return parsed.toISOString();
 }
 
-/** 解析新浪的日期+时间 */
+/** 解析新浪的日期+时间（北京时间） */
 function formatSinaTime(dateText: string | undefined, timeText: string | undefined): string {
   const normalizedDate = String(dateText ?? "").trim();
   const normalizedTime = String(timeText ?? "").trim();
   if (!/^\d{4}-\d{2}-\d{2}$/.test(normalizedDate) || !/^\d{2}:\d{2}:\d{2}$/.test(normalizedTime)) {
-    return new Date().toISOString();
+    const now = new Date();
+    const offsetMs = now.getTimezoneOffset() * 60 * 1000;
+    const cstNow = new Date(now.getTime() + offsetMs + CST_OFFSET_MS);
+    return `${cstNow.toISOString().slice(0, -1)}+08:00`;
   }
   return `${normalizedDate}T${normalizedTime}+08:00`;
 }
@@ -627,7 +630,12 @@ async function fetchEastmoneyMarketIndex(): Promise<MarketIndexSnapshot> {
 
   return {
     timestamp: Date.now(),
-    updatedAt: new Date().toISOString(),
+    updatedAt: (() => {
+      const now = new Date();
+      const offsetMs = now.getTimezoneOffset() * 60 * 1000;
+      const cstNow = new Date(now.getTime() + offsetMs + CST_OFFSET_MS);
+      return `${cstNow.toISOString().slice(0, -1)}+08:00`;
+    })(),
     summaries,
     source: "direct",
   };
@@ -656,7 +664,12 @@ async function fetchSinaMarketIndex(): Promise<MarketIndexSnapshot> {
 
   return {
     timestamp: Date.now(),
-    updatedAt: new Date().toISOString(),
+    updatedAt: (() => {
+      const now = new Date();
+      const offsetMs = now.getTimezoneOffset() * 60 * 1000;
+      const cstNow = new Date(now.getTime() + offsetMs + CST_OFFSET_MS);
+      return `${cstNow.toISOString().slice(0, -1)}+08:00`;
+    })(),
     summaries,
     source: "direct",
   };

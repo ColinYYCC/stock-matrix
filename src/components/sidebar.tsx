@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { Maximize2, RotateCcw, Settings2, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -69,6 +70,34 @@ function getPeriodLabel(period: HeatmapPeriodKey, messages: HeatmapMessages): st
   return labels[period];
 }
 
+/** 格式化相对时间 */
+function formatRelativeTime(
+  lastPollAt: number,
+  locale: "zh" | "en",
+  messages: HeatmapMessages
+): string {
+  const now = Date.now();
+  const diffMs = now - lastPollAt;
+
+  if (diffMs < 1000 || lastPollAt === 0) {
+    return messages.justNow;
+  }
+
+  const diffSeconds = Math.floor(diffMs / 1000);
+  if (diffSeconds < 60) {
+    if (locale === "en") {
+      return `${diffSeconds}s ago`;
+    }
+    return `${diffSeconds}秒前`;
+  }
+
+  const diffMinutes = Math.floor(diffSeconds / 60);
+  if (locale === "en") {
+    return `${diffMinutes}m ago`;
+  }
+  return `${diffMinutes}分钟前`;
+}
+
 /** 市场概览数据 */
 type MarketOverview = {
   advanceCount: number;
@@ -100,6 +129,8 @@ type SidebarProps = {
   treemapData: TreemapResponse | null;
   marketOverview: MarketOverview | null;
   updatedAt: string;
+  lastPollAt: number;
+  isTrading: boolean;
   sidebarOpen: boolean;
   isFullscreen: boolean;
   onMarketChange: (market: MarketKey) => void;
@@ -127,6 +158,8 @@ export function Sidebar({
   treemapData,
   marketOverview,
   updatedAt,
+  lastPollAt,
+  isTrading,
   sidebarOpen,
   isFullscreen,
   onMarketChange,
@@ -139,10 +172,21 @@ export function Sidebar({
   onOpenSettings,
   onCloseSidebar,
 }: SidebarProps) {
+  const [relativeTime, setRelativeTime] = useState(() =>
+    formatRelativeTime(lastPollAt, locale, messages)
+  );
+
+  // 每秒更新相对时间显示
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setRelativeTime(formatRelativeTime(lastPollAt, locale, messages));
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [lastPollAt, locale, messages]);
+
   if (isFullscreen) return null;
 
-  const isEnglish = locale === "en";
-  const lastUpdatedText = updatedAt ? new Date(updatedAt).toLocaleTimeString() : "--:--:--";
+  const lastUpdatedText = updatedAt ? new Date(updatedAt).toLocaleTimeString('zh-CN', { timeZone: 'Asia/Shanghai', hour: '2-digit', minute: '2-digit', second: '2-digit' }) : "--:--:--";
   const riseTextClass = getRiseTextClass(priceColorMode);
   const fallTextClass = getFallTextClass(priceColorMode);
   const boardFilterOptions = treemapData?.nodes ?? [];
@@ -186,14 +230,37 @@ export function Sidebar({
         </div>
 
         <div className="flex-1 overflow-y-auto overflow-x-hidden px-1.5 py-1.5 sm:px-2">
-          {/* 最近刷新时间 */}
-          <div className="mb-1.5 flex items-center justify-between border border-border bg-muted/18 px-1.5 py-1 text-muted-foreground">
-            <span className="font-semibold uppercase tracking-[0.12em] text-[9px]">
-              {messages.lastUpdated}
-            </span>
-            <span className="font-semibold tabular-nums text-foreground text-[10px]">
-              {lastUpdatedText}
-            </span>
+          {/* 最近刷新时间 + 交易状态 */}
+          <div className="mb-1.5 flex items-center justify-between border border-border bg-muted/18 px-1.5 py-1">
+            <div className="flex items-center gap-1.5">
+              {/* 交易状态点 */}
+              <div
+                className={cn(
+                  "size-1.5 rounded-full",
+                  isTrading ? "animate-pulse" : ""
+                )}
+                style={{
+                  backgroundColor: isTrading
+                    ? "var(--brand)"
+                    : "var(--muted-foreground)",
+                }}
+              />
+              <span className={cn(
+                "font-semibold text-[9px]",
+                isTrading ? "text-foreground" : "text-muted-foreground"
+              )}>
+                {isTrading ? messages.marketOpen : messages.marketClosed}
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-[9px] text-muted-foreground">{relativeTime}</span>
+              <span className={cn(
+                "font-semibold tabular-nums text-[10px]",
+                !isTrading && "text-muted-foreground/60"
+              )}>
+                {lastUpdatedText}
+              </span>
+            </div>
           </div>
 
           {/* 市场范围切换 */}

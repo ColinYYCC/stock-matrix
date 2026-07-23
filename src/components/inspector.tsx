@@ -1,6 +1,6 @@
 "use client";
 
-import { forwardRef } from "react";
+import { forwardRef, memo } from "react";
 
 import { cn } from "@/lib/utils";
 import { formatPrice, formatChange } from "@/lib/format";
@@ -39,6 +39,66 @@ type InspectorProps = {
 };
 
 /**
+ * 列表项组件：用 memo 包裹，只有 props 变化时才重新渲染
+ *
+ * 性能优化：鼠标在同一板块内悬停到不同股票时，只有 active 状态变化的两个项
+ * （旧的取消高亮 + 新的高亮）会重新渲染，其余项跳过。
+ */
+const StockListItem = memo(function StockListItem({
+  code,
+  name,
+  price,
+  changePct,
+  isActive,
+  priceColorMode,
+}: {
+  code: string;
+  name: string;
+  price: number;
+  changePct: number;
+  isActive: boolean;
+  priceColorMode: PriceColorMode;
+}) {
+  return (
+    <div
+      className={cn(
+        "grid grid-cols-[minmax(0,1fr)_56px_64px_80px] items-center gap-2 border-b border-slate-300/70 px-3 py-1.5 text-[12.5px]",
+        isActive && "bg-slate-100"
+      )}
+    >
+      <span
+        className={cn(
+          "min-w-0 pr-1 font-medium leading-[1.2] [word-break:keep-all]",
+          isActive && "font-semibold"
+        )}
+      >
+        {name}
+      </span>
+      <img
+        src={getSparklineUrl(code)}
+        alt=""
+        className="h-5 w-full object-contain"
+        loading="lazy"
+        decoding="async"
+        referrerPolicy="no-referrer"
+        onError={(event) => { event.currentTarget.style.visibility = "hidden"; }}
+      />
+      <span className="text-right text-[11.5px] font-medium tabular-nums text-slate-700">
+        {formatPrice(price)}
+      </span>
+      <span
+        className={cn(
+          "text-right text-[11.5px] font-medium tabular-nums",
+          getChangeTextClass(changePct, priceColorMode, "strong")
+        )}
+      >
+        {formatChange(changePct)}
+      </span>
+    </div>
+  );
+});
+
+/**
  * 悬浮详情面板
  *
  * 鼠标悬浮在个股色块上时显示，包含：
@@ -55,7 +115,7 @@ export const Inspector = forwardRef<HTMLDivElement, InspectorProps>(function Ins
 
   return (
     <aside
-      className="pointer-events-none absolute z-30 overflow-hidden rounded-none border border-slate-700/80 bg-[#0f1319]/96 text-slate-100 shadow-[0_22px_72px_rgba(0,0,0,0.36)] backdrop-blur-sm"
+      className="pointer-events-none absolute z-30 overflow-hidden rounded-none border border-slate-700/80 bg-[#0f1319] text-slate-100 shadow-[0_22px_72px_rgba(0,0,0,0.36)]"
       style={{
         left: style.left,
         top: style.top,
@@ -131,47 +191,17 @@ export const Inspector = forwardRef<HTMLDivElement, InspectorProps>(function Ins
               className="overflow-y-auto"
               style={{ maxHeight: listMaxHeight }}
             >
-              {stocks.map((item) => {
-                const isActive = item.active;
-                return (
-                  <div
-                    key={item.code}
-                    className={cn(
-                      "grid grid-cols-[minmax(0,1fr)_56px_64px_80px] items-center gap-2 border-b border-slate-300/70 px-3 py-1.5 text-[12.5px]",
-                      isActive && "bg-slate-100"
-                    )}
-                  >
-                    <span
-                      className={cn(
-                        "min-w-0 pr-1 font-medium leading-[1.2] [word-break:keep-all]",
-                        isActive && "font-semibold"
-                      )}
-                    >
-                      {item.name}
-                    </span>
-                    <img
-                      src={getSparklineUrl(item.code)}
-                      alt=""
-                      className="h-5 w-full object-contain"
-                      loading="lazy"
-                      decoding="async"
-                      referrerPolicy="no-referrer"
-                      onError={(event) => { event.currentTarget.style.visibility = "hidden"; }}
-                    />
-                    <span className="text-right text-[11.5px] font-medium tabular-nums text-slate-700">
-                      {formatPrice(item.price)}
-                    </span>
-                    <span
-                      className={cn(
-                        "text-right text-[11.5px] font-medium tabular-nums",
-                        getChangeTextClass(item.changePct, priceColorMode, "strong")
-                      )}
-                    >
-                      {formatChange(item.changePct)}
-                    </span>
-                  </div>
-                );
-              })}
+              {stocks.map((item) => (
+                <StockListItem
+                  key={item.code}
+                  code={item.code}
+                  name={item.name}
+                  price={item.price}
+                  changePct={item.changePct}
+                  isActive={item.active}
+                  priceColorMode={priceColorMode}
+                />
+              ))}
             </div>
           </div>
         </>

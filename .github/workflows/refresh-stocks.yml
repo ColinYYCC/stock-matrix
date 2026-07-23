@@ -1,0 +1,121 @@
+# 每个交易日自动刷新股票基础数据（全 A 股名单 + 申万行业 + HS300/A500 成分股）
+#
+# 流程：AKShare 拉最新数据 → 覆盖 JSON → 校验 → git push → Vercel 自动部署
+# 也可以在 GitHub 仓库的 Actions 页面手动触发（workflow_dispatch）
+#
+# 每天跑三次（北京时间，周一到周五）：
+#   09:00 开盘前 — 拉最新名单，确保当天新上市的股票开盘前就进入热力图
+#   12:00 午休中 — 用上午盘的市值刷新色块大小，下午 13:00 复盘时已是最新
+#   16:00 收盘后 — 用全天收盘数据做最终刷新
+#
+# A 股交易时段：09:30-11:30 / 13:00-15:00，午休 11:30-13:00
+# cron 用 UTC 时间：UTC 01:00 = CST 09:00，UTC 04:00 = CST 12:00，UTC 08:00 = CST 16:00
+
+name: Refresh Stock Data
+
+on:
+  schedule:
+    - cron: "0 1 * * 1-5"   # 北京时间 09:00 开盘前
+    - cron: "0 4 * * 1-5"   # 北京时间 12:00 午休中
+    - cron: "0 8 * * 1-5"   # 北京时间 16:00 收盘后
+  workflow_dispatch: {}
+
+# 防止同一时间跑两个实例
+concurrency:
+  group: refresh-stocks
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Fetch latest stock data
+        run: python scripts/fetch_stocks.py
+
+      - name: Validate output
+        run: |
+          python - <<'PY'
+          import json, sys, os
+
+          data_dir = "src/lib/data"
+          errors = []
+
+          # 校验 stocks-fallback.json
+          with open(f"{data_dir}/stocks-fallback.json", encoding="utf-8") as f:
+              stocks_data = json.load(f)
+          stock_count = stocks_data.get("stockCount", 0)
+          if stock_count < 4000:
+              errors.append(f"股票数量异常：{stock_count}（预期 > 4000）")
+          if not stocks_data.get("stocks"):
+              errors.append("stocks 列表为空")
+
+          # 校验 index-constituents.json
+          with open(f"{data_dir}/index-constituents.json", encoding="utf-8") as f:
+              constituents = json.load(f)
+          hs300_count = len(constituents.get("hs300", []))
+          zza500_count = len(constituents.get("zza500", []))
+          if hs300_count < 250:
+              errors.append(f"HS300 成分股数量异常：{hs300_count}（预期 ≈ 300）")
+          if zza500_count < 450:
+              errors.append(f"中证 A500 成分股数量异常：{zza500_count}（预期 ≈ 500）")
+
+          # 校验 subboards.json
+          with open(f"{data_dir}/subboards.json", encoding="utf-8") as f:
+              subboards = json.load(f)
+          sub_count = subboards.get("count", 0)
+          if sub_count < 4000:
+              errors.append(f"二级行业映射数量异常：{sub_count}（预期 > 4000）")
+
+          if errors:
+              print("❌ 数据校验失败：")
+              for e in errors:
+                  print(f"  - {e}")
+              sys.exit(1)
+
+          print(f"✅ 校验通过：{stock_count} 只股票，HS300 {hs300_count} 只，A500 {zza500_count} 只，行业映射 {sub_count} 条")
+          PY
+
+      - name: Commit and push
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/lib/data/stocks-fallback.json src/lib/data/subboards.json src/lib/data/index-constituents.json
+
+          # 没有变更就跳过
+          if git diff --staged --quiet; then
+            echo "数据未变化，跳过提交"
+            exit 0
+          fi
+
+          # 提取股票数量用于 commit message
+          STOCK_COUNT=$(python -c "import json; print(json.load(open('src/lib/data/stocks-fallback.json'))['stockCount'])")
+          DATE=$(date -u +"%Y-%m-%d")
+
+          # 判断是哪个时段（UTC 时间）
+          RUN_HOUR=$(date -u +"%H")
+          if [ "$RUN_HOUR" -lt 3 ]; then
+            TAG="pre-market"
+          elif [ "$RUN_HOUR" -lt 6 ]; then
+            TAG="midday"
+          else
+            TAG="post-close"
+          fi
+
+          git commit -m "chore(data): refresh stock snapshot (${STOCK_COUNT} stocks, ${DATE}, ${TAG})"
+          git push
+          echo "✅ 已提交并推送，Vercel 将自动部署"
