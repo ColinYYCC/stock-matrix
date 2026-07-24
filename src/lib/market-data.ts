@@ -255,6 +255,42 @@ let indexCache: MarketIndexSnapshot | null = null;
 let indexPromise: Promise<MarketIndexSnapshot> | null = null;
 let hasLoggedFallbackWarning = false;
 
+/** 收盘数据锁定标记：一旦检测到已收盘且获取到有效数据，就锁定不再刷新 */
+let isMarketClosedAndLocked = false;
+let marketCloseLockTimestamp = 0;
+let lockDateString = ""; // 记录锁定时的日期，用于次日自动解锁
+
+/** 判断当前是否已收盘（15:00 之后）且应该锁定数据 */
+function shouldLockAfterMarketClose(): boolean {
+  const now = new Date();
+  const cst = new Date(now.getTime() + CST_OFFSET_MS);
+  const dayOfWeek = cst.getUTCDay();
+  // 周六=6, 周日=0，周末也锁定
+  if (dayOfWeek === 0 || dayOfWeek === 6) return true;
+
+  const timeMinutes = cst.getUTCHours() * 60 + cst.getUTCMinutes();
+  // 下午收盘 15:00 = 900 分钟（15*60），之后锁定数据
+  return timeMinutes >= 900;
+}
+
+/** 检查是否需要解锁（次日开盘前自动解锁） */
+function checkAndResetLockIfNewDay(): void {
+  const now = new Date();
+  const cst = new Date(now.getTime() + CST_OFFSET_MS);
+  const currentDateString = `${cst.getUTCFullYear()}-${cst.getUTCMonth() + 1}-${cst.getUTCDate()}`;
+
+  // 如果日期变了，重置锁定状态
+  if (isMarketClosedAndLocked && lockDateString && lockDateString !== currentDateString) {
+    isMarketClosedAndLocked = false;
+    marketCloseLockTimestamp = 0;
+    lockDateString = "";
+    // 清除缓存，确保第二天获取最新数据
+    quoteCache = null;
+    summaryCache = null;
+    indexCache = null;
+  }
+}
+
 // ============ 工具函数 ============
 
 /** 把值转成数字，无法转换返回 0 */
@@ -310,28 +346,29 @@ function formatEastmoneyTime(value: number | string | undefined): string {
   return new Date(seconds * 1000).toISOString();
 }
 
-/** 解析同花顺的时间字符串 */
+/** 解析同花顺的时间字符串，返回北京时间 ISO 格式 */
 function formatShanghaiTime(value: string | undefined): string {
   const trimmed = value?.trim();
-  if (!trimmed) return new Date().toISOString();
+  // 同花顺的时间字符串本身就是北京时间，fallback 时用 UTC+8
+  if (!trimmed) return new Date(Date.now() + CST_OFFSET_MS).toISOString().replace("Z", "+08:00");
   if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(trimmed)) {
     return `${trimmed.replace(" ", "T")}+08:00`;
   }
   const parsed = new Date(trimmed);
-  if (Number.isNaN(parsed.getTime())) return new Date().toISOString();
+  if (Number.isNaN(parsed.getTime())) return new Date(Date.now() + CST_OFFSET_MS).toISOString().replace("Z", "+08:00");
+  // parsed.toISOString() 返回 UTC 时间（前端会用 timeZone: 'Asia/Shanghai' 显示，所以没问题）
   return parsed.toISOString();
 }
 
-/** 解析新浪的日期+时间（北京时间） */
+/** 解析新浪的日期+时间（北京时间），返回北京时间 ISO 格式 */
 function formatSinaTime(dateText: string | undefined, timeText: string | undefined): string {
   const normalizedDate = String(dateText ?? "").trim();
   const normalizedTime = String(timeText ?? "").trim();
   if (!/^\d{4}-\d{2}-\d{2}$/.test(normalizedDate) || !/^\d{2}:\d{2}:\d{2}$/.test(normalizedTime)) {
-    const now = new Date();
-    const offsetMs = now.getTimezoneOffset() * 60 * 1000;
-    const cstNow = new Date(now.getTime() + offsetMs + CST_OFFSET_MS);
-    return `${cstNow.toISOString().slice(0, -1)}+08:00`;
+    // 新浪返回的日期时间就是北京时间，fallback 时用当前 UTC 时间戳 +8 小时
+    return new Date(Date.now() + CST_OFFSET_MS).toISOString().replace("Z", "+08:00");
   }
+  // 新浪的日期+时间字段本身就是北京时间，直接拼接 +08:00
   return `${normalizedDate}T${normalizedTime}+08:00`;
 }
 
@@ -665,12 +702,8 @@ async function fetchSinaMarketIndex(): Promise<MarketIndexSnapshot> {
 
   return {
     timestamp: Date.now(),
-    updatedAt: (() => {
-      const now = new Date();
-      const offsetMs = now.getTimezoneOffset() * 60 * 1000;
-      const cstNow = new Date(now.getTime() + offsetMs + CST_OFFSET_MS);
-      return `${cstNow.toISOString().slice(0, -1)}+08:00`;
-    })(),
+    // 用 Date.now()（UTC 毫秒戳）直接加 8 小时得到北京时间，不依赖服务端时区设置
+    updatedAt: new Date(Date.now() + CST_OFFSET_MS).toISOString().replace("Z", "+08:00"),
     summaries,
     source: "direct",
   };
@@ -813,6 +846,22 @@ async function fetchSummaryFromRemote(): Promise<MarketSummarySnapshot> {
 async function getCachedMarketIndex() {
   const now = Date.now();
 
+  // 先检查是否需要跨日解锁
+  checkAndResetLockIfNewDay();
+
+  // 收盘后锁定机制
+  if (isMarketClosedAndLocked && indexCache) {
+    return indexCache;
+  }
+
+  if (shouldLockAfterMarketClose() && indexCache && !isMarketClosedAndLocked) {
+    isMarketClosedAndLocked = true;
+    marketCloseLockTimestamp = now;
+    const cst = new Date(now + CST_OFFSET_MS);
+    lockDateString = `${cst.getUTCFullYear()}-${cst.getUTCMonth() + 1}-${cst.getUTCDate()}`;
+    return indexCache;
+  }
+
   if (indexCache && now - indexCache.timestamp < quoteCacheMs) {
     return indexCache;
   }
@@ -824,6 +873,12 @@ async function getCachedMarketIndex() {
   indexPromise = fetchMarketIndex()
     .then((snapshot) => {
       indexCache = snapshot;
+      if (shouldLockAfterMarketClose() && !isMarketClosedAndLocked) {
+        isMarketClosedAndLocked = true;
+        marketCloseLockTimestamp = Date.now();
+        const cst = new Date(Date.now() + CST_OFFSET_MS);
+        lockDateString = `${cst.getUTCFullYear()}-${cst.getUTCMonth() + 1}-${cst.getUTCDate()}`;
+      }
       return snapshot;
     })
     .catch((error) => {
@@ -840,6 +895,23 @@ async function getCachedMarketIndex() {
 async function getCachedQuotes() {
   const now = Date.now();
 
+  // 先检查是否需要跨日解锁
+  checkAndResetLockIfNewDay();
+
+  // 收盘后锁定机制：如果已收盘且已有有效缓存，直接返回缓存数据
+  if (isMarketClosedAndLocked && quoteCache) {
+    return quoteCache;
+  }
+
+  // 检查是否刚进入收盘状态，需要锁定
+  if (shouldLockAfterMarketClose() && quoteCache && !isMarketClosedAndLocked) {
+    isMarketClosedAndLocked = true;
+    marketCloseLockTimestamp = now;
+    const cst = new Date(now + CST_OFFSET_MS);
+    lockDateString = `${cst.getUTCFullYear()}-${cst.getUTCMonth() + 1}-${cst.getUTCDate()}`;
+    return quoteCache;
+  }
+
   if (quoteCache && now - quoteCache.timestamp < quoteCacheMs) {
     return quoteCache;
   }
@@ -851,6 +923,13 @@ async function getCachedQuotes() {
   quotePromise = fetchQuotesFromRemote()
     .then((snapshot) => {
       quoteCache = snapshot;
+      // 获取数据后检查是否需要锁定
+      if (shouldLockAfterMarketClose() && !isMarketClosedAndLocked) {
+        isMarketClosedAndLocked = true;
+        marketCloseLockTimestamp = Date.now();
+        const cst = new Date(Date.now() + CST_OFFSET_MS);
+        lockDateString = `${cst.getUTCFullYear()}-${cst.getUTCMonth() + 1}-${cst.getUTCDate()}`;
+      }
       return snapshot;
     })
     .catch((error) => {
@@ -867,6 +946,22 @@ async function getCachedQuotes() {
 async function getCachedSummary() {
   const now = Date.now();
 
+  // 先检查是否需要跨日解锁
+  checkAndResetLockIfNewDay();
+
+  // 收盘后锁定机制
+  if (isMarketClosedAndLocked && summaryCache) {
+    return summaryCache;
+  }
+
+  if (shouldLockAfterMarketClose() && summaryCache && !isMarketClosedAndLocked) {
+    isMarketClosedAndLocked = true;
+    marketCloseLockTimestamp = now;
+    const cst = new Date(now + CST_OFFSET_MS);
+    lockDateString = `${cst.getUTCFullYear()}-${cst.getUTCMonth() + 1}-${cst.getUTCDate()}`;
+    return summaryCache;
+  }
+
   if (summaryCache && now - summaryCache.timestamp < summaryCacheMs) {
     return summaryCache;
   }
@@ -878,6 +973,12 @@ async function getCachedSummary() {
   summaryPromise = fetchSummaryFromRemote()
     .then((snapshot) => {
       summaryCache = snapshot;
+      if (shouldLockAfterMarketClose() && !isMarketClosedAndLocked) {
+        isMarketClosedAndLocked = true;
+        marketCloseLockTimestamp = Date.now();
+        const cst = new Date(Date.now() + CST_OFFSET_MS);
+        lockDateString = `${cst.getUTCFullYear()}-${cst.getUTCMonth() + 1}-${cst.getUTCDate()}`;
+      }
       return snapshot;
     })
     .catch((error) => {

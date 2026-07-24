@@ -25,13 +25,19 @@ const AFTERNOON_END = 15 * 60;
 /**
  * 判断给定时间是否处于 A 股交易时段。
  *
- * 时区转换：把 UTC 毫秒加 8 小时偏移，再用 getUTC* 读取，
- * 这样无论用户本地时区如何，结果都以北京时间为准。
+ * 时区转换原理：
+ * - Date 对象内部存储的是 UTC 时间戳（自 1970-01-01 00:00:00 UTC 以来的毫秒数）
+ * - getUTCHours() / getUTCMinutes() 直接读取这个内部 UTC 时间的小时和分钟
+ * - 北京时间 = UTC + 8 小时
+ * - 所以把内部时间戳加 8 小时后用 getUTC* 读取，就等于直接读出北京时间
+ * - 这种方法不受客户端/服务端本地时区设置的影响，结果始终以北京时间为准
  *
  * @param now 当前时间，默认 new Date()
  * @returns true = 交易中，false = 非交易时段
  */
 export function isTradingHours(now: Date = new Date()): boolean {
+  // now.getTime() 返回的是 UTC 时间戳（绝对时间，不含时区）
+  // 加上 8 小时偏移后，用 getUTC* 方法读取就是北京时间
   const cst = new Date(now.getTime() + CST_OFFSET_MS);
 
   const dayOfWeek = cst.getUTCDay();
