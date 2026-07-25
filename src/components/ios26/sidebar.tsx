@@ -145,7 +145,7 @@ export function Sidebar({
   onToggleFullscreen,
   onOpenSettings,
   onCloseSidebar,
-}) {
+}: SidebarProps) {
   if (isFullscreen) return null;
 
   // 显示数据的真实时间戳（北京时间），而非客户端当前时间
