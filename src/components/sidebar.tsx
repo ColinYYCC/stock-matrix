@@ -1,6 +1,5 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import { Maximize2, RotateCcw, Settings2, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -70,34 +69,6 @@ function getPeriodLabel(period: HeatmapPeriodKey, messages: HeatmapMessages): st
   return labels[period];
 }
 
-/** 格式化相对时间 */
-function formatRelativeTime(
-  lastPollAt: number,
-  locale: "zh" | "en",
-  messages: HeatmapMessages
-): string {
-  const now = Date.now();
-  const diffMs = now - lastPollAt;
-
-  if (diffMs < 1000 || lastPollAt === 0) {
-    return messages.justNow;
-  }
-
-  const diffSeconds = Math.floor(diffMs / 1000);
-  if (diffSeconds < 60) {
-    if (locale === "en") {
-      return `${diffSeconds}s ago`;
-    }
-    return `${diffSeconds}秒前`;
-  }
-
-  const diffMinutes = Math.floor(diffSeconds / 60);
-  if (locale === "en") {
-    return `${diffMinutes}m ago`;
-  }
-  return `${diffMinutes}分钟前`;
-}
-
 /** 市场概览数据 */
 type MarketOverview = {
   advanceCount: number;
@@ -129,7 +100,6 @@ type SidebarProps = {
   treemapData: TreemapResponse | null;
   marketOverview: MarketOverview | null;
   updatedAt: string;
-  lastPollAt: number;
   isTrading: boolean;
   sidebarOpen: boolean;
   isFullscreen: boolean;
@@ -158,7 +128,6 @@ export function Sidebar({
   treemapData,
   marketOverview,
   updatedAt,
-  lastPollAt,
   isTrading,
   sidebarOpen,
   isFullscreen,
@@ -172,21 +141,21 @@ export function Sidebar({
   onOpenSettings,
   onCloseSidebar,
 }: SidebarProps) {
-  const [relativeTime, setRelativeTime] = useState(() =>
-    formatRelativeTime(lastPollAt, locale, messages)
-  );
-
-  // 每秒更新相对时间显示
-  useEffect(() => {
-    const timer = setInterval(() => {
-      setRelativeTime(formatRelativeTime(lastPollAt, locale, messages));
-    }, 1000);
-    return () => clearInterval(timer);
-  }, [lastPollAt, locale, messages]);
-
   if (isFullscreen) return null;
 
-  const lastUpdatedText = updatedAt ? new Date(updatedAt).toLocaleTimeString('zh-CN', { timeZone: 'Asia/Shanghai', hour: '2-digit', minute: '2-digit', second: '2-digit' }) : "--:--:--";
+  // 显示数据的真实时间戳（北京时间），而非客户端当前时间
+  // 超过 24 小时时显示日期+时间，否则只显示时间
+  const displayTimeText = (() => {
+    if (!updatedAt) return "--:--:--";
+    const dataTime = new Date(updatedAt);
+    if (isNaN(dataTime.getTime())) return "--:--:--";
+    const now = new Date();
+    const isSameDay = dataTime.toLocaleDateString('zh-CN', { timeZone: 'Asia/Shanghai' }) === now.toLocaleDateString('zh-CN', { timeZone: 'Asia/Shanghai' });
+    if (isSameDay) {
+      return dataTime.toLocaleTimeString('zh-CN', { timeZone: 'Asia/Shanghai', hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    }
+    return dataTime.toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false });
+  })();
   const riseTextClass = getRiseTextClass(priceColorMode);
   const fallTextClass = getFallTextClass(priceColorMode);
   const boardFilterOptions = treemapData?.nodes ?? [];
@@ -252,15 +221,12 @@ export function Sidebar({
                 {isTrading ? messages.marketOpen : messages.marketClosed}
               </span>
             </div>
-            <div className="flex items-center gap-2">
-              <span className="text-[9px] text-muted-foreground">{relativeTime}</span>
-              <span className={cn(
-                "font-semibold tabular-nums text-[10px]",
-                !isTrading && "text-muted-foreground/60"
-              )}>
-                {lastUpdatedText}
-              </span>
-            </div>
+            <span className={cn(
+              "font-semibold tabular-nums text-[10px]",
+              !isTrading && "text-muted-foreground/60"
+            )}>
+              {displayTimeText}
+            </span>
           </div>
 
           {/* 市场范围切换 */}

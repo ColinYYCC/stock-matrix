@@ -22,6 +22,7 @@ export function formatPrice(value: number) {
 
 /** 格式化涨跌幅：正数前面加 + 号，保留 2 位小数 */
 export function formatChange(value: number) {
+  if (Number.isNaN(value)) return "--";
   if (value > 0) {
     return `+${value.toFixed(2)}%`;
   }
@@ -30,6 +31,7 @@ export function formatChange(value: number) {
 
 /** 紧凑版涨跌幅：绝对值 >= 10 保留 1 位小数，否则 2 位，去掉末尾零 */
 export function formatCompactChange(value: number) {
+  if (Number.isNaN(value)) return "--";
   const absValue = Math.abs(value);
   const digits = absValue >= 10 ? 1 : 2;
   const text = trimTrailingZeros(value.toFixed(digits));

@@ -13,22 +13,27 @@ export const colorLegendSteps = [-4, -3, -2, -1, 0, 1, 2, 3, 4] as const;
 /** 图例上显示的刻度值 */
 export const legendTicks = [-4, -2, 0, 2, 4] as const;
 
-/** 平盘阈值：涨跌幅绝对值小于 0.1% 视为平盘 */
-const FLAT_THRESHOLD = 0.1;
+/** 平盘阈值：涨跌幅绝对值小于此值视为平盘（仅 0.00% 显示灰色） */
+const FLAT_THRESHOLD = 0.001;
 
 /** 颜色映射的最大涨跌幅限制：超过 10% 就是最深色 */
 const COLOR_LIMIT = 10;
 
-/** 平盘时的灰色 */
+/** 平盘时的灰色（仅当 FLAT_THRESHOLD > 0 时生效） */
 const NEUTRAL_COLOR = "rgb(72, 79, 92)";
 
 /**
  * 把涨跌幅百分比映射成 RGB 颜色字符串
  *
- * @param changePct 涨跌幅百分比（正数=涨，负数=跌）
+ * @param changePct 涨跌幅百分比（正数=涨，负数=跌，NaN=无数据）
  * @param colorMode 颜色模式：red-rise=红涨绿跌，green-rise=绿涨红跌
  */
 export function getHeatColor(changePct: number, colorMode: PriceColorMode): string {
+  // NaN 表示无数据，显示灰色
+  if (Number.isNaN(changePct)) {
+    return NEUTRAL_COLOR;
+  }
+
   const amplitude = clamp(Math.abs(changePct) / COLOR_LIMIT, 0, 1);
 
   // 平盘用灰色
@@ -59,6 +64,11 @@ export function getHeatColor(changePct: number, colorMode: PriceColorMode): stri
  * 板块标题栏的颜色（比个股色块略深一点）
  */
 export function getBoardHeaderColor(changePct: number, colorMode: PriceColorMode): string {
+  // NaN 表示无数据，显示灰色
+  if (Number.isNaN(changePct)) {
+    return "rgb(51, 58, 70)";
+  }
+
   const amplitude = clamp(Math.abs(changePct) / COLOR_LIMIT, 0, 1);
 
   if (Math.abs(changePct) < FLAT_THRESHOLD) {
@@ -101,6 +111,11 @@ export function getChangeTextClass(
   colorMode: PriceColorMode,
   tone: "normal" | "soft" | "strong" = "normal"
 ): string {
+  // NaN 表示无数据，显示灰色
+  if (Number.isNaN(changePct)) {
+    return tone === "strong" ? "text-slate-500" : "text-muted-foreground";
+  }
+
   if (Math.abs(changePct) < FLAT_THRESHOLD) {
     return tone === "strong" ? "text-slate-500" : "text-muted-foreground";
   }

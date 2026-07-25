@@ -16,8 +16,14 @@ export async function GET(request: NextRequest) {
 
   try {
     const data = await getOverviewData(periodParam);
+    if (data.source === "fallback") {
+      return NextResponse.json(data, {
+        status: 503,
+        headers: { "Cache-Control": "no-store" },
+      });
+    }
     const response = NextResponse.json(data);
-    response.headers.set("Cache-Control", "public, s-maxage=8, stale-while-revalidate=30");
+    response.headers.set("Cache-Control", "public, s-maxage=8, stale-while-revalidate=300");
     return response;
   } catch (error) {
     return NextResponse.json(

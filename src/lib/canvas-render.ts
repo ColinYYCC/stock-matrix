@@ -138,12 +138,14 @@ function formatPrice(value: number) {
 
 /** 格式化涨跌幅 */
 function formatChange(value: number) {
+  if (Number.isNaN(value)) return "--";
   if (value > 0) return `+${value.toFixed(2)}%`;
   return `${value.toFixed(2)}%`;
 }
 
 /** 紧凑版涨跌幅 */
 function formatCompactChange(value: number) {
+  if (Number.isNaN(value)) return "--";
   const absValue = Math.abs(value);
   const digits = absValue >= 10 ? 1 : 2;
   const text = value.toFixed(digits).replace(/\.0+$/, "").replace(/(\.\d*[1-9])0+$/, "$1");

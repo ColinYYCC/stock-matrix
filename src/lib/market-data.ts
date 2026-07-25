@@ -313,7 +313,12 @@ function parseFiniteValue(value: number | string | undefined): number | null {
   return null;
 }
 
-/** 从 changes 对象中取出指定周期的涨跌幅，取不到就退回当日涨幅 */
+/**
+ * 从 changes 对象中取出指定周期的涨跌幅。
+ * - 当日周期（day）：取不到时退回 fallback 值（stock.changePct）
+ * - 其他周期（week/month/year）：取不到时返回 NaN，不拿当日涨跌幅冒充
+ *   前端通过 isNaN() 判断后显示灰色，不会展示错误数据
+ */
 function extractPeriodChange(
   changes: Partial<Record<HeatmapPeriodKey, number>> | undefined,
   period: HeatmapPeriodKey,
@@ -321,8 +326,12 @@ function extractPeriodChange(
 ): number {
   const selected = changes?.[period];
   if (typeof selected === "number" && Number.isFinite(selected)) return selected;
-  const day = changes?.day;
-  return typeof day === "number" && Number.isFinite(day) ? day : fallback;
+
+  // 只有当日周期才允许退回 fallback 值
+  if (period === "day") return fallback;
+
+  // 其他周期没有数据就返回 NaN，不冒充
+  return Number.NaN;
 }
 
 /** 把 "600519.SH" 格式转换成东方财富的 "1.600519" 格式 */
@@ -498,19 +507,20 @@ function parseEastmoneyQuotes(payload: unknown) {
 
     const dayChangePct =
       parseFiniteValue(row.f3) ?? (previousClose > 0 ? ((price - previousClose) / previousClose) * 100 : 0);
-    const weekChangePct = parseFiniteValue(row.f109) ?? dayChangePct;
-    const monthChangePct = parseFiniteValue(row.f110) ?? parseFiniteValue(row.f24) ?? dayChangePct;
-    const yearChangePct = parseFiniteValue(row.f25) ?? dayChangePct;
+    // 只在数据真实存在时才写入对应周期，不拿当日涨跌幅冒充
+    const weekChangePct = parseFiniteValue(row.f109);
+    const monthChangePct = parseFiniteValue(row.f110) ?? parseFiniteValue(row.f24);
+    const yearChangePct = parseFiniteValue(row.f25);
     const turnoverAmount = parseFiniteValue(row.f6) ?? 0;
+
+    const changes: Partial<Record<HeatmapPeriodKey, number>> = { day: dayChangePct };
+    if (weekChangePct !== null) changes.week = weekChangePct;
+    if (monthChangePct !== null) changes.month = monthChangePct;
+    if (yearChangePct !== null) changes.year = yearChangePct;
 
     quotes[code] = {
       price,
-      changes: {
-        day: dayChangePct,
-        week: weekChangePct,
-        month: monthChangePct,
-        year: yearChangePct,
-      },
+      changes,
       turnoverAmount,
     };
 
@@ -602,15 +612,20 @@ function parseSinaIndexData(rawText: string) {
   return summaries;
 }
 
-/** 解析东方财富指数行情 */
-function parseEastmoneyIndexData(payload: unknown) {
+/** 解析东方财富指数行情，返回 summaries 和最新时间戳 */
+function parseEastmoneyIndexData(payload: unknown): {
+  summaries: Partial<Record<MarketKey, MarketIndexValue>>;
+  latestTimestamp: string;
+} {
   const secidToMarket = new Map(
     Object.entries(marketIndexSecids).map(([market, secid]) => [secid, market as MarketKey])
   );
   const summaries: Partial<Record<MarketKey, MarketIndexValue>> = {};
   const diff = (payload as { data?: { diff?: unknown[] } }).data?.diff;
 
-  if (!Array.isArray(diff)) return summaries;
+  if (!Array.isArray(diff)) return { summaries, latestTimestamp: "" };
+
+  let latestTimestamp = "";
 
   for (const item of diff) {
     const row = item as Record<string, number | string | undefined>;
@@ -625,19 +640,30 @@ function parseEastmoneyIndexData(payload: unknown) {
 
     if (!name || price <= 0 || dayChangePct === null) continue;
 
+    // 只在数据真实存在时才写入对应周期，不拿当日涨跌幅冒充
+    const weekChangePct = parseFiniteValue(row.f109);
+    const monthChangePct = parseFiniteValue(row.f110) ?? parseFiniteValue(row.f24);
+    const yearChangePct = parseFiniteValue(row.f25);
+
+    const changes: Partial<Record<HeatmapPeriodKey, number>> = { day: dayChangePct };
+    if (weekChangePct !== null) changes.week = weekChangePct;
+    if (monthChangePct !== null) changes.month = monthChangePct;
+    if (yearChangePct !== null) changes.year = yearChangePct;
+
     summaries[market] = {
       name,
       price,
-      changes: {
-        day: dayChangePct,
-        week: parseFiniteValue(row.f109) ?? dayChangePct,
-        month: parseFiniteValue(row.f110) ?? parseFiniteValue(row.f24) ?? dayChangePct,
-        year: parseFiniteValue(row.f25) ?? dayChangePct,
-      },
+      changes,
     };
+
+    // 提取真实时间戳 f124
+    const timestamp = formatEastmoneyTime(row.f124);
+    if (timestamp && (!latestTimestamp || timestamp > latestTimestamp)) {
+      latestTimestamp = timestamp;
+    }
   }
 
-  return summaries;
+  return { summaries, latestTimestamp };
 }
 
 /** 从东方财富拉取指数快照 */
@@ -660,20 +686,18 @@ async function fetchEastmoneyMarketIndex(): Promise<MarketIndexSnapshot> {
     throw new Error(`Eastmoney index request failed: ${response.status}`);
   }
 
-  const summaries = parseEastmoneyIndexData(await response.json());
+  const { summaries, latestTimestamp: indexTimestamp } = parseEastmoneyIndexData(await response.json());
 
   if (Object.keys(summaries).length < marketKeys.length * 0.75) {
     throw new Error("Eastmoney index snapshot is incomplete");
   }
 
+  // 使用真实数据时间戳 f124，而不是 Date.now()
+  const updatedAt = indexTimestamp || new Date().toISOString();
+
   return {
     timestamp: Date.now(),
-    updatedAt: (() => {
-      const now = new Date();
-      const offsetMs = now.getTimezoneOffset() * 60 * 1000;
-      const cstNow = new Date(now.getTime() + offsetMs + CST_OFFSET_MS);
-      return `${cstNow.toISOString().slice(0, -1)}+08:00`;
-    })(),
+    updatedAt,
     summaries,
     source: "direct",
   };
@@ -1052,7 +1076,10 @@ function summarizeMarketBreadth(
     const quote = liveQuotes[stock.code];
     const changePct = extractPeriodChange(quote?.changes, period, stock.changePct);
 
-    if (changePct > flatThreshold) {
+    // NaN 表示无数据，计入平盘（不误导用户）
+    if (Number.isNaN(changePct)) {
+      flatCount += 1;
+    } else if (changePct > flatThreshold) {
       advanceCount += 1;
     } else if (changePct < -flatThreshold) {
       declineCount += 1;
@@ -1073,7 +1100,7 @@ function summarizeMarketBreadth(
   };
 }
 
-/** 加权平均涨跌幅（按市值权重） */
+/** 加权平均涨跌幅（按市值权重，跳过无数据的股票） */
 function computeWeightedChange(
   stocks: StockSnapshot[],
   liveQuotes: Record<string, RemoteQuoteValue>,
@@ -1086,11 +1113,13 @@ function computeWeightedChange(
     const value = getStockAreaValue(stock);
     const quote = liveQuotes[stock.code];
     const changePct = extractPeriodChange(quote?.changes, period, stock.changePct);
+    // 跳过无数据的股票，不纳入加权计算
+    if (Number.isNaN(changePct)) continue;
     weightedSum += changePct * value;
     totalValue += value;
   }
 
-  return totalValue > 0 ? weightedSum / totalValue : 0;
+  return totalValue > 0 ? weightedSum / totalValue : Number.NaN;
 }
 
 // ============ 兜底函数 ============
@@ -1138,7 +1167,7 @@ function buildFallbackQuotes(market: MarketKey, period: HeatmapPeriodKey): Quote
   for (const stock of marketStocks) {
     quotes[stock.code] = {
       price: stock.price,
-      changePct: stock.changePct,
+      changePct: extractPeriodChange(undefined, period, stock.changePct),
       turnoverAmount: getStockTurnover(stock) || estimateFallbackTurnover(stock),
     };
   }
@@ -1296,7 +1325,7 @@ export async function getOverviewData(
       const changePct = computeWeightedChange(stocks, {}, period);
       return {
         market,
-        changePct: Number.isFinite(changePct) ? changePct : 0,
+        changePct: Number.isFinite(changePct) ? changePct : Number.NaN,
         stockCount: stocks.length,
         updatedAt: fallbackSnapshotSeed.updatedAt,
       };
@@ -1325,7 +1354,7 @@ export async function getOverviewData(
 
     return {
       market,
-      changePct: Number.isFinite(changePct) ? changePct : 0,
+      changePct: Number.isFinite(changePct) ? changePct : Number.NaN,
       stockCount: stocks.length,
       updatedAt: quoteResult.value.updatedAt,
     };

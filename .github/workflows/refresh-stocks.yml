@@ -54,8 +54,9 @@ jobs:
 
           data_dir = "src/lib/data"
           errors = []
+          warnings = []
 
-          # 校验 stocks-fallback.json
+          # 校验 stocks-fallback.json（必须通过，价格是核心数据）
           with open(f"{data_dir}/stocks-fallback.json", encoding="utf-8") as f:
               stocks_data = json.load(f)
           stock_count = stocks_data.get("stockCount", 0)
@@ -64,30 +65,39 @@ jobs:
           if not stocks_data.get("stocks"):
               errors.append("stocks 列表为空")
 
-          # 校验 index-constituents.json
-          with open(f"{data_dir}/index-constituents.json", encoding="utf-8") as f:
-              constituents = json.load(f)
-          hs300_count = len(constituents.get("hs300", []))
-          zza500_count = len(constituents.get("zza500", []))
-          if hs300_count < 250:
-              errors.append(f"HS300 成分股数量异常：{hs300_count}（预期 ≈ 300）")
-          if zza500_count < 450:
-              errors.append(f"中证 A500 成分股数量异常：{zza500_count}（预期 ≈ 500）")
+          # 校验 index-constituents.json（非必须，失败只警告）
+          if os.path.exists(f"{data_dir}/index-constituents.json"):
+              with open(f"{data_dir}/index-constituents.json", encoding="utf-8") as f:
+                  constituents = json.load(f)
+              hs300_count = len(constituents.get("hs300", []))
+              zza500_count = len(constituents.get("zza500", []))
+              if hs300_count < 250:
+                  warnings.append(f"HS300 成分股数量异常：{hs300_count}（预期 ≈ 300）")
+              if zza500_count < 450:
+                  warnings.append(f"中证 A500 成分股数量异常：{zza500_count}（预期 ≈ 500）")
 
-          # 校验 subboards.json
-          with open(f"{data_dir}/subboards.json", encoding="utf-8") as f:
-              subboards = json.load(f)
-          sub_count = subboards.get("count", 0)
-          if sub_count < 4000:
-              errors.append(f"二级行业映射数量异常：{sub_count}（预期 > 4000）")
+          # 校验 subboards.json（非必须，失败只警告）
+          if os.path.exists(f"{data_dir}/subboards.json"):
+              with open(f"{data_dir}/subboards.json", encoding="utf-8") as f:
+                  subboards = json.load(f)
+              sub_count = subboards.get("count", 0)
+              if sub_count < 4000:
+                  warnings.append(f"二级行业映射数量异常：{sub_count}（预期 > 4000）")
+
+          if warnings:
+              print("⚠ 非核心数据校验警告（不影响提交）：")
+              for w in warnings:
+                  print(f"  - {w}")
 
           if errors:
-              print("❌ 数据校验失败：")
+              print("❌ 核心数据校验失败：")
               for e in errors:
                   print(f"  - {e}")
               sys.exit(1)
 
-          print(f"✅ 校验通过：{stock_count} 只股票，HS300 {hs300_count} 只，A500 {zza500_count} 只，行业映射 {sub_count} 条")
+          print(f"✅ 核心校验通过：{stock_count} 只股票")
+          if warnings:
+              print(f"⚠ {len(warnings)} 个非核心警告")
           PY
 
       - name: Commit and push
