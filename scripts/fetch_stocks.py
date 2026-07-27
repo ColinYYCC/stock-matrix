@@ -41,6 +41,10 @@ def _patched_session_get(self, url, **kwargs):
             headers["Referer"] = "https://quote.eastmoney.com/"
         if "User-Agent" not in headers:
             headers["User-Agent"] = "Mozilla/5.0 (compatible; StockMatrix/1.0)"
+    # AKShare 用 82.push2 / 7.push2 等子域名，在 GitHub Actions（美国 IP）上被封锁；
+    # 换成 push2.eastmoney.com（项目网站在 Vercel 上用的就是这个，海外可访问）
+    import re
+    url = re.sub(r"\d+\.push2\.eastmoney\.com", "push2.eastmoney.com", url)
     kwargs["headers"] = headers
     return _original_session_get(self, url, **kwargs)
 
