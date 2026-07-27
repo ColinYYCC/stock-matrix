@@ -34,3 +34,11 @@ graphify-out/
 ._*
 # CatPaw 工具配置（非项目代码，不提交）
 .catpaw/
+
+# 备份文件
+*.bak
+
+# 截图与 mockup 临时文件
+PixPin_*.png
+*-mockup.html
+gen-mockup.py

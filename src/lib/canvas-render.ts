@@ -28,28 +28,144 @@ export const heatmapCanvasThemes: Record<
   }
 > = {
   dark: {
-    backgroundStart: "#171b22",
-    backgroundEnd: "#10141b",
-    boardFill: "#20252d",
-    subBoardFill: "rgba(18, 23, 31, 0.62)",
-    subBoardBorder: "rgba(148, 163, 184, 0.3)",
-    activeSubBoardInner: "rgba(8, 47, 73, 0.92)",
-    boardBorder: "rgba(148, 163, 184, 0.48)",
-    highlightOuter: "rgba(2, 6, 23, 0.92)",
-    highlightInner: "#f8fafc",
+    // iOS 26 Liquid Glass 风格：通透、微光、圆角
+    backgroundStart: "#1c1f26",
+    backgroundEnd: "#13161d",
+    boardFill: "rgba(30, 35, 46, 0.75)",
+    subBoardFill: "rgba(22, 27, 38, 0.45)",
+    subBoardBorder: "rgba(180, 190, 210, 0.18)",
+    activeSubBoardInner: "rgba(8, 47, 73, 0.72)",
+    boardBorder: "rgba(180, 190, 210, 0.22)",
+    highlightOuter: "rgba(2, 6, 23, 0.85)",
+    highlightInner: "rgba(248, 250, 252, 0.95)",
   },
   light: {
-    backgroundStart: "#f8fafc",
-    backgroundEnd: "#e9eef5",
-    boardFill: "#eef2f7",
-    subBoardFill: "rgba(255, 255, 255, 0.72)",
-    subBoardBorder: "rgba(100, 116, 139, 0.32)",
-    activeSubBoardInner: "rgba(14, 116, 144, 0.42)",
-    boardBorder: "rgba(100, 116, 139, 0.42)",
-    highlightOuter: "rgba(15, 23, 42, 0.82)",
-    highlightInner: "#ffffff",
+    // iOS 26 Liquid Glass 风格（浅色模式）
+    backgroundStart: "#f5f7fa",
+    backgroundEnd: "#eef1f6",
+    boardFill: "rgba(245, 248, 252, 0.78)",
+    subBoardFill: "rgba(255, 255, 255, 0.58)",
+    subBoardBorder: "rgba(140, 155, 180, 0.20)",
+    activeSubBoardInner: "rgba(14, 116, 144, 0.32)",
+    boardBorder: "rgba(140, 155, 180, 0.26)",
+    highlightOuter: "rgba(15, 23, 42, 0.70)",
+    highlightInner: "rgba(255, 255, 255, 0.95)",
   },
 };
+
+/** iOS 26 Liquid Glass 圆角半径配置 */
+const LIQUID_GLASS_RADIUS = {
+  /** 板块圆角 */
+  board: 10,
+  /** 子板块圆角 */
+  subBoard: 7,
+  /** 个股色块圆角 */
+  stock: 3,
+  /** 最小尺寸下不画圆角 */
+  minSizeForRadius: 4,
+} as const;
+
+/**
+ * 绘制圆角矩形路径（iOS 26 Liquid Glass 核心：所有矩形都带圆角）
+ * 当宽或高太小时自动降级为直角，避免圆角交叉变形
+ */
+function roundRectPath(
+  context: CanvasRenderingContext2D,
+  x: number, y: number, width: number, height: number, radius: number
+) {
+  const w = Math.max(0, width);
+  const h = Math.max(0, height);
+  if (w < LIQUID_GLASS_RADIUS.minSizeForRadius || h < LIQUID_GLASS_RADIUS.minSizeForRadius || radius <= 0) {
+    context.rect(x, y, w, h);
+    return;
+  }
+  const r = Math.min(radius, w / 2, h / 2);
+  context.moveTo(x + r, y);
+  context.arcTo(x + w, y, x + w, y + h, r);
+  context.arcTo(x + w, y + h, x, y + h, r);
+  context.arcTo(x, y + h, x, y, r);
+  context.arcTo(x, y, x + w, y, r);
+  context.closePath();
+}
+
+/**
+ * 填充圆角矩形（iOS 26 风格的填充操作）
+ */
+function fillRoundRect(
+  context: CanvasRenderingContext2D,
+  x: number, y: number, width: number, height: number, radius: number
+) {
+  context.beginPath();
+  roundRectPath(context, x, y, width, height, radius);
+  context.fill();
+}
+
+/**
+ * 描边圆角矩形（iOS 26 风格的毛玻璃边框）
+ */
+function strokeRoundRect(
+  context: CanvasRenderingContext2D,
+  x: number, y: number, width: number, height: number, radius: number
+) {
+  context.beginPath();
+  roundRectPath(context, x, y, width, height, radius);
+  context.stroke();
+}
+
+/**
+ * iOS 26 Liquid Glass 玻璃高光效果
+ * 在圆角矩形顶部画一道微妙的白色/浅色高光弧线，模拟玻璃反光
+ * 这是 Liquid Glass 的灵魂——让色块看起来像一块发光的玻璃
+ */
+function drawLiquidGlassHighlight(
+  context: CanvasRenderingContext2D,
+  x: number, y: number, width: number, height: number, radius: number,
+  /** 高光颜色，默认半透明白色 */ color = "rgba(255, 255, 255, 0.35)",
+  /** 高光线条粗细 */ lineWidth = 1.2,
+  /** 高光距离顶部的内缩距离 */ inset = 0.8
+) {
+  const w = Math.max(0, width);
+  const h = Math.max(0, height);
+  if (w < 8 || h < 6 || radius <= 0) return;
+
+  const r = Math.min(radius, w / 2, h / 2);
+  const iy = y + inset; // 高光线的 Y 坐标（略低于顶部）
+
+  context.save();
+  context.strokeStyle = color;
+  context.lineWidth = lineWidth;
+  context.lineCap = "round";
+  context.beginPath();
+  // 只在顶部画一段弧形高光，从左侧圆角末端到右侧圆角起点
+  context.moveTo(x + r * 0.6, iy + (h > 20 ? r * 0.3 : 0));
+  // 顶部直线段（带微上凸的曲线模拟球面反射）
+  context.quadraticCurveTo(x + w / 2, iy - (h > 30 ? 1.2 : 0.5), x + w - r * 0.6, iy + (h > 20 ? r * 0.3 : 0));
+  context.stroke();
+  context.restore();
+}
+
+/**
+ * iOS 26 Liquid Glass 内阴影效果
+ * 在圆角矩形内部边缘画一圈极淡的内阴影，增加立体深度感
+ */
+function drawLiquidGlassInnerShadow(
+  context: CanvasRenderingContext2D,
+  x: number, y: number, width: number, height: number, radius: number,
+  /** 阴影颜色 */ shadowColor = "rgba(0, 0, 0, 0.08)",
+  /** 阴影扩散大小 */ blur = 3,
+  /** 内缩距离 */ inset = 1.5
+) {
+  const w = Math.max(0, width);
+  const h = Math.max(0, height);
+  if (w < 12 || h < 10 || radius <= 0) return;
+
+  context.save();
+  // 用更细的描边模拟内阴影
+  context.strokeStyle = shadowColor;
+  context.lineWidth = blur;
+  strokeRoundRect(context, x + inset, y + inset, w - inset * 2, h - inset * 2, Math.max(1, radius - inset));
+  context.restore();
+}
 
 /** 热力图字体栈 */
 const heatmapFontStack = `"Avenir Next Condensed", "DIN Condensed", "PingFang SC", "Microsoft YaHei", Arial, sans-serif`;
@@ -182,10 +298,11 @@ export function drawStockLabel(context: CanvasRenderingContext2D, stock: StockRe
 
   context.save();
   try {
-    context.fillStyle = "rgba(247, 250, 252, 0.96)";
-    context.shadowColor = "rgba(0, 0, 0, 0.42)";
-    context.shadowBlur = (displayHeight < 14 ? 0.45 : 1.2) * screenUnit;
-    context.shadowOffsetY = 0.6 * screenUnit;
+    // A4: iOS 26 更柔和的文字阴影（降低对比度、增加扩散）
+    context.fillStyle = "rgba(248, 250, 252, 0.94)";
+    context.shadowColor = "rgba(0, 0, 0, 0.28)";
+    context.shadowBlur = (displayHeight < 14 ? 0.8 : 1.8) * screenUnit;
+    context.shadowOffsetY = 0.5 * screenUnit;
 
     if (hasLargeLabel) {
       const preferredTitleSize =
@@ -327,22 +444,22 @@ export function drawHeatmap(params: DrawHeatmapParams) {
   context.translate(view.x, view.y);
   context.scale(view.scale, view.scale);
 
-  // 4. 遍历一级板块 → 填充板块底色
+  // 4. 遍历一级板块 → 填充底色（圆角）
   for (const board of boardRects) {
     context.fillStyle = theme.boardFill;
-    context.fillRect(board.x, board.y, board.width, board.height);
+    fillRoundRect(context, board.x, board.y, board.width, board.height, LIQUID_GLASS_RADIUS.board);
   }
 
-  // 5. 遍历二级板块 → 填充子板块底色
+  // 5. 遍历二级板块 → 填充底色（圆角）
   for (const subBoard of subBoardRects) {
     context.fillStyle = theme.subBoardFill;
-    context.fillRect(subBoard.x, subBoard.y, subBoard.width, subBoard.height);
+    fillRoundRect(context, subBoard.x, subBoard.y, subBoard.width, subBoard.height, LIQUID_GLASS_RADIUS.subBoard);
   }
 
-  // 6. 遍历个股 → 填充涨跌色块 + 绘制文字标签
+  // 6. 遍历个股 → 填充涨跌色块 + 绘制文字标签（圆角）
   for (const stock of stockRects) {
     context.fillStyle = getHeatColor(stock.changePct, priceColorMode);
-    context.fillRect(stock.x, stock.y, stock.width, stock.height);
+    fillRoundRect(context, stock.x, stock.y, stock.width, stock.height, LIQUID_GLASS_RADIUS.stock);
     drawStockLabel(context, stock, view.scale);
   }
 
@@ -351,18 +468,27 @@ export function drawHeatmap(params: DrawHeatmapParams) {
     const isActiveSubBoard = activeSubBoardName === subBoard.name && activeBoardName === subBoard.boardName;
 
     if (subBoard.titleHeight > 0) {
-      context.fillStyle = getBoardHeaderColor(subBoard.changePct, priceColorMode);
-      context.fillRect(subBoard.x, subBoard.y, subBoard.width, subBoard.titleHeight);
+      // A2: iOS 26 毛玻璃标题栏 —— 半透明底色 + 涨跌色叠加
+      const headerColor = getBoardHeaderColor(subBoard.changePct, priceColorMode);
+      // 先画半透明玻璃底
+      context.fillStyle = "rgba(20, 24, 35, 0.55)";
+      context.beginPath();
+      roundRectPath(context, subBoard.x, subBoard.y, subBoard.width, subBoard.titleHeight, LIQUID_GLASS_RADIUS.subBoard);
+      context.fill();
+      // 再叠一层半透明涨跌色（模拟毛玻璃透出底层颜色的效果）
+      context.fillStyle = headerColor.replace("rgb", "rgba").replace(")", ", 0.45)");
+      context.fill();
     }
 
+    // iOS 26 毛玻璃边框（圆角描边）
     context.strokeStyle = isActiveSubBoard ? "#5eead4" : theme.subBoardBorder;
-    context.lineWidth = isActiveSubBoard ? 2 : 0.9;
-    context.strokeRect(subBoard.x + 0.5, subBoard.y + 0.5, Math.max(0, subBoard.width - 1), Math.max(0, subBoard.height - 1));
+    context.lineWidth = isActiveSubBoard ? 1.8 : 0.7;
+    strokeRoundRect(context, subBoard.x + 0.5, subBoard.y + 0.5, Math.max(0, subBoard.width - 1), Math.max(0, subBoard.height - 1), LIQUID_GLASS_RADIUS.subBoard);
 
     if (isActiveSubBoard) {
       context.strokeStyle = theme.activeSubBoardInner;
-      context.lineWidth = 0.8;
-      context.strokeRect(subBoard.x + 2.2, subBoard.y + 2.2, Math.max(0, subBoard.width - 4.4), Math.max(0, subBoard.height - 4.4));
+      context.lineWidth = 0.7;
+      strokeRoundRect(context, subBoard.x + 2.2, subBoard.y + 2.2, Math.max(0, subBoard.width - 4.4), Math.max(0, subBoard.height - 4.4), LIQUID_GLASS_RADIUS.subBoard - 1);
     }
 
     if (subBoard.width > 44 && subBoard.titleHeight > 8) {
@@ -379,13 +505,20 @@ export function drawHeatmap(params: DrawHeatmapParams) {
   for (const board of boardRects) {
     const isActiveBoard = activeBoardName === board.name;
     if (board.titleHeight > 0) {
-      context.fillStyle = getBoardHeaderColor(board.changePct, priceColorMode);
-      context.fillRect(board.x, board.y, board.width, board.titleHeight);
+      // A2: iOS 26 毛玻璃标题栏 —— 一级板块同上
+      const headerColor = getBoardHeaderColor(board.changePct, priceColorMode);
+      context.fillStyle = "rgba(20, 24, 35, 0.60)";
+      context.beginPath();
+      roundRectPath(context, board.x, board.y, board.width, board.titleHeight, LIQUID_GLASS_RADIUS.board);
+      context.fill();
+      context.fillStyle = headerColor.replace("rgb", "rgba").replace(")", ", 0.42)");
+      context.fill();
     }
 
+    // iOS 26 毛玻璃边框（圆角描边）
     context.strokeStyle = isActiveBoard ? "#f6d36d" : theme.boardBorder;
-    context.lineWidth = isActiveBoard ? 1.8 : 1;
-    context.strokeRect(board.x + 0.5, board.y + 0.5, Math.max(0, board.width - 1), Math.max(0, board.height - 1));
+    context.lineWidth = isActiveBoard ? 1.6 : 0.85;
+    strokeRoundRect(context, board.x + 0.5, board.y + 0.5, Math.max(0, board.width - 1), Math.max(0, board.height - 1), LIQUID_GLASS_RADIUS.board);
 
     if (board.width > 56 && board.titleHeight > 10) {
       const fontSize = clamp(Math.floor(board.titleHeight * 0.52), 10, 15);
@@ -397,15 +530,32 @@ export function drawHeatmap(params: DrawHeatmapParams) {
     }
   }
 
-  // 9. 绘制高亮选中色块（双层描边）
+  // 9. 绘制高亮选中色块（iOS 26 发光光晕效果）
   if (highlightedStock) {
-    context.strokeStyle = theme.highlightOuter;
-    context.lineWidth = 4;
-    context.strokeRect(highlightedStock.x + 1, highlightedStock.y + 1, Math.max(0, highlightedStock.width - 2), Math.max(0, highlightedStock.height - 2));
+    const hr = LIQUID_GLASS_RADIUS.stock + 1;
+    const hx = highlightedStock.x + 1;
+    const hy = highlightedStock.y + 1;
+    const hw = Math.max(0, highlightedStock.width - 2);
+    const hh = Math.max(0, highlightedStock.height - 2);
 
+    // A3: 外层发光光晕（用 shadow 模拟柔和辉光）
+    context.save();
     context.strokeStyle = theme.highlightInner;
-    context.lineWidth = 2;
-    context.strokeRect(highlightedStock.x + 1, highlightedStock.y + 1, Math.max(0, highlightedStock.width - 2), Math.max(0, highlightedStock.height - 2));
+    context.lineWidth = 1.6;
+    context.shadowColor = "rgba(120, 200, 255, 0.55)";
+    context.shadowBlur = 8;
+    strokeRoundRect(context, hx, hy, hw, hh, hr);
+    context.restore();
+
+    // 内层白色描边（清晰边界）
+    context.strokeStyle = theme.highlightInner;
+    context.lineWidth = 1.8;
+    strokeRoundRect(context, hx, hy, hw, hh, hr);
+
+    // 外层深色描边（对比度）
+    context.strokeStyle = theme.highlightOuter;
+    context.lineWidth = 3;
+    strokeRoundRect(context, hx, hy, hw, hh, hr);
   }
 
   context.restore();
@@ -440,48 +590,57 @@ export function drawHeatmapHighlight(params: DrawHeatmapHighlightParams) {
   context.translate(view.x, view.y);
   context.scale(view.scale, view.scale);
 
-  // 活跃二级行业边框（teal + 内框）
+  // 活跃二级行业边框（iOS 26 圆角）
   if (activeSubBoardRect) {
     context.strokeStyle = "#5eead4";
-    context.lineWidth = 2;
-    context.strokeRect(
+    context.lineWidth = 1.8;
+    strokeRoundRect(context,
       activeSubBoardRect.x + 0.5, activeSubBoardRect.y + 0.5,
-      Math.max(0, activeSubBoardRect.width - 1), Math.max(0, activeSubBoardRect.height - 1),
+      Math.max(0, activeSubBoardRect.width - 1), Math.max(0, activeSubBoardRect.height - 1), LIQUID_GLASS_RADIUS.subBoard
     );
 
     context.strokeStyle = theme.activeSubBoardInner;
-    context.lineWidth = 0.8;
-    context.strokeRect(
+    context.lineWidth = 0.7;
+    strokeRoundRect(context,
       activeSubBoardRect.x + 2.2, activeSubBoardRect.y + 2.2,
-      Math.max(0, activeSubBoardRect.width - 4.4), Math.max(0, activeSubBoardRect.height - 4.4),
+      Math.max(0, activeSubBoardRect.width - 4.4), Math.max(0, activeSubBoardRect.height - 4.4), LIQUID_GLASS_RADIUS.subBoard - 1
     );
   }
 
-  // 活跃板块边框（金色）
+  // 活跃板块边框（iOS 26 圆角）
   if (activeBoardRect) {
     context.strokeStyle = "#f6d36d";
-    context.lineWidth = 1.8;
-    context.strokeRect(
+    context.lineWidth = 1.6;
+    strokeRoundRect(context,
       activeBoardRect.x + 0.5, activeBoardRect.y + 0.5,
-      Math.max(0, activeBoardRect.width - 1), Math.max(0, activeBoardRect.height - 1),
+      Math.max(0, activeBoardRect.width - 1), Math.max(0, activeBoardRect.height - 1), LIQUID_GLASS_RADIUS.board
     );
   }
 
-  // 高亮个股（双层描边）
+  // 高亮个股（iOS 26 发光光晕效果）
   if (highlightedStock) {
-    context.strokeStyle = theme.highlightOuter;
-    context.lineWidth = 4;
-    context.strokeRect(
-      highlightedStock.x + 1, highlightedStock.y + 1,
-      Math.max(0, highlightedStock.width - 2), Math.max(0, highlightedStock.height - 2),
-    );
+    const hr = LIQUID_GLASS_RADIUS.stock + 1;
+    const hx = highlightedStock.x + 1;
+    const hy = highlightedStock.y + 1;
+    const hw = Math.max(0, highlightedStock.width - 2);
+    const hh = Math.max(0, highlightedStock.height - 2);
+
+    // A3: 发光光晕
+    context.save();
+    context.strokeStyle = theme.highlightInner;
+    context.lineWidth = 1.6;
+    context.shadowColor = "rgba(120, 200, 255, 0.55)";
+    context.shadowBlur = 8;
+    strokeRoundRect(context, hx, hy, hw, hh, hr);
+    context.restore();
 
     context.strokeStyle = theme.highlightInner;
-    context.lineWidth = 2;
-    context.strokeRect(
-      highlightedStock.x + 1, highlightedStock.y + 1,
-      Math.max(0, highlightedStock.width - 2), Math.max(0, highlightedStock.height - 2),
-    );
+    context.lineWidth = 1.8;
+    strokeRoundRect(context, hx, hy, hw, hh, hr);
+
+    context.strokeStyle = theme.highlightOuter;
+    context.lineWidth = 3;
+    strokeRoundRect(context, hx, hy, hw, hh, hr);
   }
 
   context.restore();
