@@ -9,7 +9,7 @@
  * - 绘制函数参数化，不依赖 React 生命周期
  */
 import type { BoardRect, DisplayMode, PriceColorMode, StockRect, SubBoardRect } from "@/types/heatmap";
-import { clamp } from "./format";
+import { clamp, formatChange, formatCompactChange, formatPrice, shortenText } from "./format";
 import { getBoardHeaderColor, getHeatColor } from "./heatmap-color";
 
 /** Canvas 主题配色表 */
@@ -222,6 +222,12 @@ export function fitTextToWidth(context: CanvasRenderingContext2D, text: string, 
   return context.measureText(firstCharacter).width <= maxWidth ? firstCharacter : "";
 }
 
+/** 把 rgb(r, g, b) 转成 rgba(r, g, b, alpha)，非 rgb 格式原样返回 */
+function withAlpha(color: string, alpha: number): string {
+  const m = color.match(/^rgb\((\d+),\s*(\d+),\s*(\d+)\)$/);
+  return m ? `rgba(${m[1]}, ${m[2]}, ${m[3]}, ${alpha})` : color;
+}
+
 /** 按比例缩放字号使其不超过 maxWidth */
 export function fitFontSizeToWidth(
   context: CanvasRenderingContext2D,
@@ -241,32 +247,6 @@ export function fitFontSizeToWidth(
   return clamp((preferredSize * maxWidth) / preferredWidth, minSize, preferredSize);
 }
 
-/** 截断文字，超长加省略号 */
-function shortenText(text: string, maxLength: number) {
-  if (text.length <= maxLength) return text;
-  return `${text.slice(0, maxLength)}…`;
-}
-
-/** 格式化价格 */
-function formatPrice(value: number) {
-  return value.toFixed(value >= 100 ? 1 : 2);
-}
-
-/** 格式化涨跌幅 */
-function formatChange(value: number) {
-  if (Number.isNaN(value)) return "--";
-  if (value > 0) return `+${value.toFixed(2)}%`;
-  return `${value.toFixed(2)}%`;
-}
-
-/** 紧凑版涨跌幅 */
-function formatCompactChange(value: number) {
-  if (Number.isNaN(value)) return "--";
-  const absValue = Math.abs(value);
-  const digits = absValue >= 10 ? 1 : 2;
-  const text = value.toFixed(digits).replace(/\.0+$/, "").replace(/(\.\d*[1-9])0+$/, "$1");
-  return value > 0 ? `+${text}%` : `${text}%`;
-}
 
 /**
  * 绘制单只股票的文字标签
@@ -476,7 +456,7 @@ export function drawHeatmap(params: DrawHeatmapParams) {
       roundRectPath(context, subBoard.x, subBoard.y, subBoard.width, subBoard.titleHeight, LIQUID_GLASS_RADIUS.subBoard);
       context.fill();
       // 再叠一层半透明涨跌色（模拟毛玻璃透出底层颜色的效果）
-      context.fillStyle = headerColor.replace("rgb", "rgba").replace(")", ", 0.45)");
+      context.fillStyle = withAlpha(headerColor, 0.45);
       context.fill();
     }
 
@@ -511,7 +491,7 @@ export function drawHeatmap(params: DrawHeatmapParams) {
       context.beginPath();
       roundRectPath(context, board.x, board.y, board.width, board.titleHeight, LIQUID_GLASS_RADIUS.board);
       context.fill();
-      context.fillStyle = headerColor.replace("rgb", "rgba").replace(")", ", 0.42)");
+      context.fillStyle = withAlpha(headerColor, 0.42);
       context.fill();
     }
 

@@ -27,9 +27,6 @@ export async function GET(request: NextRequest) {
 
   try {
     const data = await getTreemapData(marketParam, periodParam);
-    const response = NextResponse.json(data);
-    // CDN 缓存：8 秒新鲜 + 5 分钟 stale-while-revalidate
-    // stale 窗口拉长到 300 秒：数据源临时挂了时 CDN 继续返回上次成功的实时数据
     // fallback 数据标记为 503，不会被 CDN 缓存，CDN 会继续返回上一次的 200 响应
     if (data.source === "fallback") {
       return NextResponse.json(data, {
@@ -37,6 +34,9 @@ export async function GET(request: NextRequest) {
         headers: { "Cache-Control": "no-store" },
       });
     }
+    const response = NextResponse.json(data);
+    // CDN 缓存：8 秒新鲜 + 5 分钟 stale-while-revalidate
+    // stale 窗口拉长到 300 秒：数据源临时挂了时 CDN 继续返回上次成功的实时数据
     response.headers.set("Cache-Control", "public, s-maxage=8, stale-while-revalidate=300");
     return response;
   } catch (error) {

@@ -49,7 +49,6 @@ import {
   type BoardRect,
   type DisplayMode,
   type HeatmapPeriodKey,
-  type HeatmapSizeMode,
   type Locale,
   type MarketKey,
   type PriceColorMode,
@@ -125,44 +124,6 @@ function getLiveTurnoverAmount(code: string, fallback: number, quotes: QuoteMap)
     return Number.isFinite(live) && live >= 0 ? live : fallback;
   }
   return fallback;
-}
-
-/** 确保面积值是正数 */
-function normalizeSizeValue(value: number) {
-  return Number.isFinite(value) && value > 0 ? value : 1;
-}
-
-/** 根据面积模式获取个股的面积权重值 */
-function getStockSizeValue(
-  stock: { code: string; value: number; turnoverAmount: number },
-  quotes: QuoteMap,
-  sizeMode: HeatmapSizeMode
-) {
-  if (sizeMode === "turnover") {
-    return normalizeSizeValue(getLiveTurnoverAmount(stock.code, stock.turnoverAmount, quotes));
-  }
-  return stock.value;
-}
-
-/** 把面积模式应用到 treemap 数据上 */
-function applySizeModeToTreemapData(
-  data: TreemapResponse,
-  quotes: QuoteMap,
-  sizeMode: HeatmapSizeMode
-): TreemapResponse {
-  if (sizeMode === "marketCap") return data;
-
-  const nodes = data.nodes
-    .map((board) => {
-      const children = board.children
-        .map((stock) => ({ ...stock, value: getStockSizeValue(stock, quotes, sizeMode) }))
-        .sort((left, right) => right.value - left.value);
-      const total = children.reduce((sum, stock) => sum + stock.value, 0);
-      return { ...board, children, value: total, stockCount: children.length };
-    })
-    .sort((left, right) => right.value - left.value);
-
-  return { ...data, nodes };
 }
 
 /** 加权平均涨跌幅（跳过无数据的股票） */
@@ -495,7 +456,6 @@ export function MarketHeatmap({ locale: initialLocale }: { locale: Locale; messa
   const [period, setPeriod] = useState<HeatmapPeriodKey>("day");
   const [boardFilter, setBoardFilter] = useState(allBoardsValue);
   const [trendFilter, setTrendFilter] = useState(allTrendsValue);
-  const [sizeMode, setSizeMode] = useState<HeatmapSizeMode>("marketCap");
   const [marketSummaries, setMarketSummaries] = useState<Partial<Record<MarketKey, MarketSummary>>>({});
   const [treemapData, setTreemapData] = useState<TreemapResponse | null>(null);
   const [quotes, setQuotes] = useState<QuoteMap>({});
@@ -567,11 +527,9 @@ export function MarketHeatmap({ locale: initialLocale }: { locale: Locale; messa
       const storedDisplayMode = window.localStorage.getItem("stock-matrix-display-mode");
       const storedTheme = window.localStorage.getItem("stock-matrix-theme-color");
       const storedPriceColor = window.localStorage.getItem("stock-matrix-price-color");
-      const storedSizeMode = window.localStorage.getItem("stock-matrix-size-mode");
       if (storedDisplayMode === "dark" || storedDisplayMode === "light") setDisplayMode(storedDisplayMode);
       if (storedTheme === "green" || storedTheme === "red" || storedTheme === "blue" || storedTheme === "violet") setThemeColor(storedTheme);
       if (storedPriceColor === "red-rise" || storedPriceColor === "green-rise") setPriceColorMode(storedPriceColor);
-      if (storedSizeMode === "marketCap" || storedSizeMode === "turnover") setSizeMode(storedSizeMode);
     } catch { /* 偏好设置是可选的 */ } finally {
       setPreferencesReady(true);
     }
@@ -589,11 +547,6 @@ export function MarketHeatmap({ locale: initialLocale }: { locale: Locale; messa
     if (!preferencesReady) return;
     try { window.localStorage.setItem("stock-matrix-price-color", priceColorMode); } catch { /* 可选 */ }
   }, [preferencesReady, priceColorMode]);
-
-  useEffect(() => {
-    if (!preferencesReady) return;
-    try { window.localStorage.setItem("stock-matrix-size-mode", sizeMode); } catch { /* 可选 */ }
-  }, [preferencesReady, sizeMode]);
 
   // ============ 尺寸监听 ============
   const refreshSize = useCallback(() => {
@@ -770,8 +723,6 @@ export function MarketHeatmap({ locale: initialLocale }: { locale: Locale; messa
     setView({ scale: 1, x: 0, y: 0 });
   }, [boardFilter, trendFilter]);
 
-  useEffect(() => { setView({ scale: 1, x: 0, y: 0 }); }, [sizeMode]);
-
   // ============ 视图偏移修正 ============
   useEffect(() => {
     setView((current) => {
@@ -870,17 +821,11 @@ export function MarketHeatmap({ locale: initialLocale }: { locale: Locale; messa
     };
   }, [visibleTreemapData, quotes]);
 
-  // 当 sizeMode 为 marketCap 时不需要 quotes（直接用原数据），只有 turnover 模式才需要
-  const sizedTreemapData = useMemo(
-    () => (visibleTreemapData ? applySizeModeToTreemapData(visibleTreemapData, quotes, sizeMode) : null),
-    [sizeMode, visibleTreemapData, sizeMode === "turnover" ? quotes : null]
-  );
-
   // ============ 树图布局：位置计算（不依赖行情，只依赖数据结构和画布尺寸） ============
   // 性能优化：把昂贵的 binaryTreemap 计算和行情数据分离
   // 位置只由市值权重决定，行情刷新时不重算位置
   const layoutPositions = useMemo(() => {
-    if (!sizedTreemapData) {
+    if (!visibleTreemapData) {
       return { stockRects: [] as StockRect[], boardRects: [] as BoardRect[], subBoardRects: [] as SubBoardRect[] };
     }
 
@@ -889,7 +834,7 @@ export function MarketHeatmap({ locale: initialLocale }: { locale: Locale; messa
     const stockRects: StockRect[] = [];
 
     const boardBoxes = binaryTreemap(
-      sizedTreemapData.nodes.map((board) => ({ item: board, value: board.value })),
+      visibleTreemapData.nodes.map((board) => ({ item: board, value: board.value })),
       0, 0, canvasSize.width, canvasSize.height, 6
     );
 
@@ -973,7 +918,7 @@ export function MarketHeatmap({ locale: initialLocale }: { locale: Locale; messa
 
     return { stockRects, boardRects, subBoardRects };
     // 注意：不依赖 quotes，只有数据结构或画布尺寸变化时才重算
-  }, [canvasSize.height, canvasSize.width, sizedTreemapData]);
+  }, [canvasSize.height, canvasSize.width, visibleTreemapData]);
 
   // ============ 树图布局：行情合并（轻量操作，只更新价格和涨跌幅） ============
   const layout = useMemo(() => {
@@ -1630,7 +1575,7 @@ export function MarketHeatmap({ locale: initialLocale }: { locale: Locale; messa
       anchor.href = url;
       anchor.download = filename;
       anchor.click();
-      URL.revokeObjectURL(url);
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
     } catch {
       toast.error(messages.shareFailed, { id: "matrix-share-generate", duration: 3200 });
     } finally {
@@ -1639,7 +1584,7 @@ export function MarketHeatmap({ locale: initialLocale }: { locale: Locale; messa
   }, [canvasSize.width, isLightMode, market, messages, period, updatedAt]);
 
   // ============ 渲染 ============
-  const areaTipMessage = sizeMode === "turnover" ? messages.tipAreaTurnover : messages.tipAreaMarketCap;
+  const areaTipMessage = messages.tipAreaMarketCap;
   const inspectorListMaxHeight = inspectorStyle ? Math.max(170, inspectorStyle.maxHeight - 292) : 170;
 
   return (
@@ -1668,7 +1613,6 @@ export function MarketHeatmap({ locale: initialLocale }: { locale: Locale; messa
           period={period}
           boardFilter={boardFilter}
           trendFilter={trendFilter}
-          sizeMode={sizeMode}
           priceColorMode={priceColorMode}
           marketSummaries={marketSummaries}
           treemapData={treemapData}
@@ -1681,7 +1625,6 @@ export function MarketHeatmap({ locale: initialLocale }: { locale: Locale; messa
           onPeriodChange={setPeriod}
           onBoardFilterChange={(v) => { setBoardFilter(v); if (isMobile) setSidebarOpen(false); }}
           onTrendFilterChange={setTrendFilter}
-          onSizeModeChange={setSizeMode}
           onResetView={() => setView({ scale: 1, x: 0, y: 0 })}
           onToggleFullscreen={() => setIsFullscreen((c) => !c)}
           onOpenSettings={() => setSettingsOpen(true)}

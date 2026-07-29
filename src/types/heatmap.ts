@@ -21,11 +21,6 @@ export const heatmapPeriodKeys = ["day", "week", "month", "year"] as const;
 /** 涨跌周期类型 */
 export type HeatmapPeriodKey = (typeof heatmapPeriodKeys)[number];
 
-// ============ 面积指标 ============
-
-/** 面积指标标识：流通市值 / 成交额 */
-export type HeatmapSizeMode = "marketCap" | "turnover";
-
 // ============ 涨跌颜色模式 ============
 
 /** 涨跌颜色模式：红涨绿跌 / 绿涨红跌 */

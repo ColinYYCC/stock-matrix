@@ -16,7 +16,6 @@ import type {
   HeatmapPeriodKey,
   MarketKey,
   PriceColorMode,
-  HeatmapSizeMode,
 } from "@/types/heatmap";
 import type { TreemapResponse } from "@/types/heatmap";
 
@@ -94,7 +93,6 @@ type SidebarProps = {
   period: HeatmapPeriodKey;
   boardFilter: string;
   trendFilter: string;
-  sizeMode: HeatmapSizeMode;
   priceColorMode: PriceColorMode;
   marketSummaries: Partial<Record<MarketKey, MarketSummary>>;
   treemapData: TreemapResponse | null;
@@ -107,7 +105,6 @@ type SidebarProps = {
   onPeriodChange: (period: HeatmapPeriodKey) => void;
   onBoardFilterChange: (value: string) => void;
   onTrendFilterChange: (value: string) => void;
-  onSizeModeChange: (mode: HeatmapSizeMode) => void;
   onResetView: () => void;
   onToggleFullscreen: () => void;
   onOpenSettings: () => void;
@@ -122,7 +119,6 @@ export function Sidebar({
   period,
   boardFilter,
   trendFilter,
-  sizeMode,
   priceColorMode,
   marketSummaries,
   treemapData,
@@ -135,7 +131,6 @@ export function Sidebar({
   onPeriodChange,
   onBoardFilterChange,
   onTrendFilterChange,
-  onSizeModeChange,
   onResetView,
   onToggleFullscreen,
   onOpenSettings,
@@ -307,34 +302,6 @@ export function Sidebar({
                   className={cn(
                     "h-7 border px-1 text-center font-semibold leading-tight transition-colors text-[10.5px]",
                     trendFilter === option.value
-                      ? "border-brand/70 bg-brand/18 text-foreground"
-                      : "border-border bg-background/80 text-muted-foreground hover:bg-muted hover:text-foreground"
-                  )}
-                >
-                  {option.label}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* 面积指标切换 */}
-          <div className="mt-1.5 border border-border bg-muted/18 p-1.5">
-            <p className="font-semibold uppercase tracking-[0.12em] text-muted-foreground text-[10px]">
-              {messages.sizeModeLabel}
-            </p>
-            <div className="mt-1 grid grid-cols-2 gap-1">
-              {[
-                { value: "marketCap" as const, label: messages.sizeModeMarketCap },
-                { value: "turnover" as const, label: messages.sizeModeTurnover },
-              ].map((option) => (
-                <button
-                  key={option.value}
-                  type="button"
-                  onClick={() => onSizeModeChange(option.value)}
-                  aria-pressed={sizeMode === option.value}
-                  className={cn(
-                    "h-7 border px-1 text-center font-semibold leading-tight transition-colors text-[10.5px]",
-                    sizeMode === option.value
                       ? "border-brand/70 bg-brand/18 text-foreground"
                       : "border-border bg-background/80 text-muted-foreground hover:bg-muted hover:text-foreground"
                   )}

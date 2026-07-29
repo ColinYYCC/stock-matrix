@@ -14,12 +14,13 @@ export const colorLegendSteps = [-4, -3, -2, -1, 0, 1, 2, 3, 4] as const;
 export const legendTicks = [-4, -2, 0, 2, 4] as const;
 
 /** 平盘阈值：涨跌幅绝对值小于此值视为平盘（仅 0.00% 显示灰色） */
-const FLAT_THRESHOLD = 0.001;
+/** 颜色映射的平盘阈值：涨跌幅绝对值小于此值时显示灰色 */
+const COLOR_FLAT_THRESHOLD = 0.001;
 
 /** 颜色映射的最大涨跌幅限制：超过 10% 就是最深色 */
 const COLOR_LIMIT = 10;
 
-/** 平盘时的灰色（仅当 FLAT_THRESHOLD > 0 时生效） */
+/** 平盘时的灰色（仅当 COLOR_FLAT_THRESHOLD > 0 时生效） */
 const NEUTRAL_COLOR = "rgb(72, 79, 92)";
 
 /**
@@ -37,7 +38,7 @@ export function getHeatColor(changePct: number, colorMode: PriceColorMode): stri
   const amplitude = clamp(Math.abs(changePct) / COLOR_LIMIT, 0, 1);
 
   // 平盘用灰色
-  if (Math.abs(changePct) < FLAT_THRESHOLD) {
+  if (Math.abs(changePct) < COLOR_FLAT_THRESHOLD) {
     return NEUTRAL_COLOR;
   }
 
@@ -71,7 +72,7 @@ export function getBoardHeaderColor(changePct: number, colorMode: PriceColorMode
 
   const amplitude = clamp(Math.abs(changePct) / COLOR_LIMIT, 0, 1);
 
-  if (Math.abs(changePct) < FLAT_THRESHOLD) {
+  if (Math.abs(changePct) < COLOR_FLAT_THRESHOLD) {
     return "rgb(51, 58, 70)";
   }
 
@@ -116,7 +117,7 @@ export function getChangeTextClass(
     return tone === "strong" ? "text-slate-500" : "text-muted-foreground";
   }
 
-  if (Math.abs(changePct) < FLAT_THRESHOLD) {
+  if (Math.abs(changePct) < COLOR_FLAT_THRESHOLD) {
     return tone === "strong" ? "text-slate-500" : "text-muted-foreground";
   }
 

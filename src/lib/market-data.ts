@@ -32,23 +32,6 @@ import {
   heatmapPeriodKeys,
 } from "@/types/heatmap";
 
-// ============ 面积指标类型（用于 API 层） ============
-
-export const metricKeys = ["1", "2", "3", "4", "5", "6"] as const;
-export type MetricKey = (typeof metricKeys)[number];
-
-export function isMetricKey(value: string): value is MetricKey {
-  return metricKeys.includes(value as MetricKey);
-}
-
-/** 从面积指标 key 推算涨跌周期 */
-export function periodFromMetricKey(metric: MetricKey): HeatmapPeriodKey {
-  if (metric === "3") return "week";
-  if (metric === "4") return "month";
-  if (metric === "5" || metric === "6") return "year";
-  return "day";
-}
-
 // 复用 types 中的类型守卫
 export { isMarketKey, isHeatmapPeriodKey, marketKeys, heatmapPeriodKeys };
 
