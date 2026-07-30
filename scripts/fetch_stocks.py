@@ -208,6 +208,11 @@ def parse_clist_stocks(payloads):
             total_cap = _safe_float(row.get("f20"))
             float_cap = _safe_float(row.get("f21"))
             name = str(row.get("f14", "")).strip()
+            # 标准化名称：全角A/B→半角，全角空格→半角，合并多余空格
+            name = name.replace("\uFF21", "A").replace("\uFF22", "B").replace("\u3000", " ")
+            while "  " in name:
+                name = name.replace("  ", " ")
+            name = name.strip()
             raw_industry = str(row.get("f100", "")).strip()
             
             # 跳过无效数据
@@ -256,14 +261,29 @@ def build_sub_to_sector_mapping(subboard_map):
         sector_name = info.get("sectorName", "")
         if sub_name and sector_name:
             sub_to_sector[sub_name] = sector_name
-    
+
+    # 申万一级行业名本身也可能是 f100 返回的二级行业名（如"银行"）
+    # 确保这些名称能直接映射到自身
+    SECTOR_NAMES = {
+        "交通运输", "传媒", "公用事业", "农林牧渔", "医药生物",
+        "商贸零售", "国防军工", "基础化工", "家用电器", "建筑材料",
+        "建筑装饰", "房地产", "有色金属", "机械设备", "汽车",
+        "煤炭", "环保", "电力设备", "电子", "石油石化",
+        "社会服务", "纺织服饰", "综合", "美容护理", "计算机",
+        "轻工制造", "通信", "钢铁", "银行", "非银金融",
+        "食品饮料",
+    }
+    for name in SECTOR_NAMES:
+        if name not in sub_to_sector:
+            sub_to_sector[name] = name
+
     # 构建去Ⅱ后缀的备用映射
     sub_to_sector_no_suffix = {}
     for sub_name, sector_name in sub_to_sector.items():
         key = sub_name.replace("Ⅱ", "").replace("Ⅰ", "").strip()
         if key and key not in sub_to_sector_no_suffix:
             sub_to_sector_no_suffix[key] = sector_name
-    
+
     return sub_to_sector, sub_to_sector_no_suffix
 
 
@@ -300,48 +320,51 @@ def lookup_sector(raw_industry, sub_to_sector, sub_to_sector_no_suffix):
 
 
 def merge_with_existing(new_stocks, existing_data):
-    """将新拉取的股票列表与现有数据合并，保留行业分类信息。
-    
-    优先级：existing stocks-fallback.json → subboards.json → f100字段映射 → "其他"
+    """将新拉取的股票列表与现有数据合并，用最新 f100 更新行业分类。
+
+    优先级：f100字段映射 → existing stocks-fallback.json → subboards.json → "其他"
+    （不再沿用旧分类，每次运行都用最新 f100 更新）
     """
     # 加载现有股票数据
     existing_map = {}
     if existing_data and existing_data.get("stocks"):
         existing_map = {s["code"]: s for s in existing_data["stocks"]}
-    
+
     # 加载 subboards.json（行业分类映射）
     subboard_map = load_subboards()
     # 构建二级→一级行业映射表
     sub_to_sector, sub_to_sector_no_suffix = build_sub_to_sector_mapping(subboard_map)
-    
+
     new_count = 0
     f100_assigned = 0
-    
+
     for stock in new_stocks:
         old = existing_map.get(stock["code"])
-        if old and old.get("boardName"):
-            # 优先使用现有 stocks-fallback.json 中的行业分类
+        raw_industry = stock.get("rawIndustry", "")
+        sector = lookup_sector(raw_industry, sub_to_sector, sub_to_sector_no_suffix)
+
+        if sector:
+            # 优先使用 f100 字段的最新行业分类
+            stock["boardName"] = sector
+            f100_assigned += 1
+        elif old and old.get("boardName"):
+            # f100 无法映射，沿用旧分类
             stock["boardName"] = old["boardName"]
         elif stock["code"] in subboard_map:
-            # 其次使用 subboards.json 中的行业分类
             stock["boardName"] = subboard_map[stock["code"]].get("sectorName", "其他")
         else:
-            # 新股：尝试用 f100 字段映射行业
-            raw_industry = stock.get("rawIndustry", "")
-            sector = lookup_sector(raw_industry, sub_to_sector, sub_to_sector_no_suffix)
-            if sector:
-                stock["boardName"] = sector
-                f100_assigned += 1
-            else:
-                stock["boardName"] = "其他"
+            stock["boardName"] = "其他"
+
+        # 记录新股
+        if not old:
             new_count += 1
             industry_info = f" 行业={sector or raw_industry or '未知'}"
             log(f"  🆕 发现新股: {stock['code']} {stock['name']} 价格={stock['price']}{industry_info}")
-    
+
+    log(f"  行业分类: {f100_assigned}/{len(new_stocks)} 只通过 f100 字段映射成功")
     if new_count > 0:
-        other_count = new_count - f100_assigned
-        log(f"  新股行业分类: {f100_assigned}/{new_count} 只通过 f100 字段成功映射，{other_count} 只标记为 '其他'")
-    
+        log(f"  其中新股: {new_count} 只")
+
     return new_stocks
 
 
@@ -365,6 +388,11 @@ def fetch_stock_detail(code):
             data = json.loads(resp.read().decode("utf-8"))
             d = data.get("data") or {}
             name = str(d.get("f58", "")).strip()
+            # 标准化名称：全角A/B→半角，全角空格→半角，合并多余空格
+            name = name.replace("\uFF21", "A").replace("\uFF22", "B").replace("\u3000", " ")
+            while "  " in name:
+                name = name.replace("  ", " ")
+            name = name.strip()
             price = d.get("f43")
             status = d.get("f152", -1)
             if not name:
@@ -511,41 +539,66 @@ def update_industry_and_constituents():
     # 构建二级→一级行业映射表
     sub_to_sector, sub_to_sector_no_suffix = build_sub_to_sector_mapping(existing_subboards)
     
-    # 用 f100 数据构建新的 subboard 映射
+    # 用 f100 数据更新所有股票的 subboard 映射（不再只更新新股）
     new_subboard_map = {}
     f100_matched = 0
     f100_unmatched = 0
     unmatched_industries = set()
-    
+    changed_count = 0
+
     for stock in stocks:
         code = stock["code"]
         raw_industry = stock.get("rawIndustry", "")
-        
-        # 如果现有 subboards.json 已有该股票的行业数据，保留
-        if code in existing_subboards:
-            new_subboard_map[code] = existing_subboards[code]
-            continue
-        
-        # 新股票：用 f100 查找一级行业
+        old_info = existing_subboards.get(code, {})
+
         if raw_industry and raw_industry != "-":
             sector = lookup_sector(raw_industry, sub_to_sector, sub_to_sector_no_suffix)
             if sector:
-                new_subboard_map[code] = {
-                    "sectorName": sector,
-                    "subBoardName": raw_industry.replace("Ⅱ", "").replace("Ⅰ", "").strip(),
-                }
+                new_sub = raw_industry.replace("Ⅱ", "").replace("Ⅰ", "").strip()
+                old_sub = old_info.get("subBoardName", "")
+                old_sec = old_info.get("sectorName", "")
+
+                # 银行类特殊处理：f100 返回笼统的"银行Ⅱ"，
+                # 保留旧的细分二级行业名（农商行/城商行/股份制银行/国有大型银行）
+                if new_sub == "银行" and old_sub and old_sub != "银行":
+                    new_subboard_map[code] = {
+                        "sectorName": sector,
+                        "subBoardName": old_sub,
+                    }
+                else:
+                    new_subboard_map[code] = {
+                        "sectorName": sector,
+                        "subBoardName": new_sub,
+                    }
+
+                # 记录分类变化
+                if old_sec and (sector != old_sec or new_sub != old_sub):
+                    changed_count += 1
+                    if changed_count <= 20:
+                        log(f"  🔄 {code} {stock['name']}: {old_sec}/{old_sub} → {sector}/{new_sub}")
+
                 f100_matched += 1
             else:
+                # f100 无法映射，保留旧数据
+                if old_info:
+                    new_subboard_map[code] = old_info
                 f100_unmatched += 1
                 unmatched_industries.add(raw_industry)
         else:
+            # 无 f100 数据（如停牌股票），保留旧数据
+            if old_info:
+                new_subboard_map[code] = old_info
             f100_unmatched += 1
-    
+
     log(f"  f100 行业分类: {f100_matched} 只匹配成功，{f100_unmatched} 只未匹配")
+    if changed_count > 0:
+        log(f"  分类变更: {changed_count} 只股票的行业分类已更新")
+        if changed_count > 20:
+            log(f"  （仅显示前 20 条变更，其余 {changed_count - 20} 条已静默更新）")
     if unmatched_industries:
         log(f"  未匹配的二级行业名: {', '.join(sorted(unmatched_industries)[:10])}{'...' if len(unmatched_industries) > 10 else ''}")
-    
-    # 合并：现有 subboards + 新增
+
+    # 合并：保留不在当前股票列表中的旧条目（如已退市），用最新 f100 数据覆盖其余
     merged_subboards = {**existing_subboards, **new_subboard_map}
     new_count = len(merged_subboards) - len(existing_subboards)
     
