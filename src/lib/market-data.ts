@@ -369,9 +369,26 @@ function normalizeAreaValue(value: number): number {
   return Number.isFinite(value) && value > 0 ? value : 1;
 }
 
-/** 获取股票的面积权重值（流通市值优先） */
-function getStockAreaValue(stock: StockSnapshot): number {
-  return normalizeAreaValue(stock.floatMarketCap || stock.totalMarketCap || stock.price * 1_000_000);
+/**
+ * 获取股票的实时面积权重值
+ *
+ * 用实时价格重新计算流通市值，使色块大小随行情变化：
+ *   floatShares = floatMarketCap / snapshotPrice（流通股本，日内不变）
+ *   liveFloatMarketCap = floatShares × livePrice
+ *
+ * 如果没有实时价格或快照价格无效，退回到静态流通市值。
+ */
+function getLiveStockAreaValue(
+  stock: StockSnapshot,
+  quote: RemoteQuoteValue | undefined
+): number {
+  const baseCap = stock.floatMarketCap || stock.totalMarketCap || stock.price * 1_000_000;
+  const livePrice = quote?.price;
+  if (livePrice && livePrice > 0 && stock.price > 0) {
+    const floatShares = baseCap / stock.price;
+    return normalizeAreaValue(floatShares * livePrice);
+  }
+  return normalizeAreaValue(baseCap);
 }
 
 /** 获取股票的成交额 */
@@ -1018,7 +1035,7 @@ function groupStocksByBoard(
       name: stock.name,
       boardName: stock.boardName,
       subBoardName: stock.subBoardName,
-      value: getStockAreaValue(stock),
+      value: getLiveStockAreaValue(stock, quote),
       exchange: stock.exchange,
       price: quote?.price ?? stock.price,
       changePct: extractPeriodChange(quote?.changes, period, stock.changePct),
@@ -1093,8 +1110,8 @@ function computeWeightedChange(
   let totalValue = 0;
 
   for (const stock of stocks) {
-    const value = getStockAreaValue(stock);
     const quote = liveQuotes[stock.code];
+    const value = getLiveStockAreaValue(stock, quote);
     const changePct = extractPeriodChange(quote?.changes, period, stock.changePct);
     // 跳过无数据的股票，不纳入加权计算
     if (Number.isNaN(changePct)) continue;

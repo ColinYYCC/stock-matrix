@@ -821,9 +821,10 @@ export function MarketHeatmap({ locale: initialLocale }: { locale: Locale; messa
     };
   }, [visibleTreemapData, quotes]);
 
-  // ============ 树图布局：位置计算（不依赖行情，只依赖数据结构和画布尺寸） ============
-  // 性能优化：把昂贵的 binaryTreemap 计算和行情数据分离
-  // 位置只由市值权重决定，行情刷新时不重算位置
+  // ============ 树图布局：位置计算（依赖 treemap 数据和画布尺寸） ============
+  // treemapData 每 8s 轮询刷新，服务端会用实时价格重算流通市值（value），
+  // 所以行情刷新时色块大小会跟着变化。binaryTreemap 只在 visibleTreemapData
+  // 或画布尺寸变化时重算，不依赖前端 quotes。
   const layoutPositions = useMemo(() => {
     if (!visibleTreemapData) {
       return { stockRects: [] as StockRect[], boardRects: [] as BoardRect[], subBoardRects: [] as SubBoardRect[] };
@@ -917,7 +918,7 @@ export function MarketHeatmap({ locale: initialLocale }: { locale: Locale; messa
     }
 
     return { stockRects, boardRects, subBoardRects };
-    // 注意：不依赖 quotes，只有数据结构或画布尺寸变化时才重算
+    // 不依赖前端 quotes，只依赖 treemap API 返回的数据（含服务端算好的实时市值）
   }, [canvasSize.height, canvasSize.width, visibleTreemapData]);
 
   // ============ 树图布局：行情合并（轻量操作，只更新价格和涨跌幅） ============
