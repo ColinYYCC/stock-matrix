@@ -11,11 +11,14 @@
  * 4. HS300/A500 从预置 JSON 读取真实成分股（原项目用市值排序近似值）
  */
 import fallbackMarketSnapshot from "@/lib/data/stocks-fallback.json";
-import subboardSnapshot from "@/lib/data/subboards.json";
 import indexConstituents from "@/lib/data/index-constituents.json";
 import { CST_OFFSET_MS } from "@/lib/trading-hours";
 import {
-  type ExchangeCode,
+  discoverStocks,
+  baselineStocks,
+  type StockSnapshot,
+} from "@/lib/stock-discovery";
+import {
   type HeatmapBoardNode,
   type HeatmapPeriodKey,
   type HeatmapStockNode,
@@ -50,20 +53,6 @@ type QuoteSnapshot = {
   updatedAt: string;
   quotes: Record<string, RemoteQuoteValue>;
   source: "direct";
-};
-
-/** 股票基础数据（从 JSON 快照加载） */
-type StockSnapshot = {
-  code: string;
-  exchange: ExchangeCode;
-  name: string;
-  boardName: string;
-  subBoardName: string;
-  price: number;
-  changePct: number;
-  totalMarketCap: number;
-  floatMarketCap: number;
-  turnoverAmount?: number;
 };
 
 /** 同花顺涨跌家数接口返回 */
@@ -198,13 +187,6 @@ const fallbackSnapshotSeed = fallbackMarketSnapshot as {
   updatedAt: string;
   stockCount: number;
   boardCount: number;
-  stocks: Array<Omit<StockSnapshot, "subBoardName">>;
-};
-
-const subboardSeed = subboardSnapshot as {
-  updatedAt: string;
-  count: number;
-  subboards: Record<string, { sectorName: string; subBoardName: string }>;
 };
 
 const constituentsSeed = indexConstituents as {
@@ -212,16 +194,6 @@ const constituentsSeed = indexConstituents as {
   hs300: string[];
   zza500: string[];
 };
-
-/** 把 JSON 快照数据合并成带二级行业信息的完整股票列表 */
-const baselineStocks: StockSnapshot[] = fallbackSnapshotSeed.stocks.map((stock) => {
-  const mapped = subboardSeed.subboards[stock.code];
-  return {
-    ...stock,
-    boardName: mapped?.sectorName ?? stock.boardName,
-    subBoardName: mapped?.subBoardName ?? stock.boardName,
-  };
-});
 
 /** HS300 真实成分股集合（改进：从预置 JSON 读取，而非市值排序近似值） */
 const hs300Set = new Set(constituentsSeed.hs300);
@@ -745,8 +717,8 @@ async function fetchMarketIndex(): Promise<MarketIndexSnapshot> {
 // ============ 行情快照（所有个股） ============
 
 /** 从远程拉取全市场行情快照（东方财富 → 新浪 → 抛异常触发兜底） */
-async function fetchQuotesFromRemote(): Promise<QuoteSnapshot> {
-  const secids = baselineStocks.map((stock) => buildEastmoneySecid(stock.code));
+async function fetchQuotesFromRemote(stocks: StockSnapshot[]): Promise<QuoteSnapshot> {
+  const secids = stocks.map((stock) => buildEastmoneySecid(stock.code));
   const eastmoneyBatches: string[][] = [];
 
   // 改进：每批 300 只（原项目 180 只）
@@ -769,7 +741,7 @@ async function fetchQuotesFromRemote(): Promise<QuoteSnapshot> {
     }
 
     // 完整性校验：返回数量 < 基线 90% 时降级
-    if (Object.keys(eastmoneyQuotes).length < baselineStocks.length * 0.9) {
+    if (Object.keys(eastmoneyQuotes).length < stocks.length * 0.9) {
       throw new Error("Eastmoney quote snapshot is incomplete");
     }
 
@@ -784,7 +756,7 @@ async function fetchQuotesFromRemote(): Promise<QuoteSnapshot> {
   }
 
   // 新浪降级：仅当日涨跌幅
-  const symbols = baselineStocks.map((stock) => codeToSinaSymbol(stock.code));
+  const symbols = stocks.map((stock) => codeToSinaSymbol(stock.code));
   const batches: string[][] = [];
 
   for (let index = 0; index < symbols.length; index += sinaBatchSize) {
@@ -802,7 +774,7 @@ async function fetchQuotesFromRemote(): Promise<QuoteSnapshot> {
     }
   }
 
-  if (Object.keys(quotes).length < baselineStocks.length * 0.9) {
+  if (Object.keys(quotes).length < stocks.length * 0.9) {
     throw new Error("Sina quote snapshot is incomplete");
   }
 
@@ -944,7 +916,7 @@ async function getCachedQuotes() {
     return quotePromise;
   }
 
-  quotePromise = fetchQuotesFromRemote()
+  quotePromise = fetchQuotesFromRemote(dynamicStocks)
     .then((snapshot) => {
       quoteCache = snapshot;
       // 获取数据后检查是否需要锁定
@@ -1181,17 +1153,15 @@ function buildFallbackQuotes(market: MarketKey, period: HeatmapPeriodKey): Quote
   };
 }
 
-// ============ 预计算各市场范围的基础股票列表 ============
+// ============ 动态股票列表 + 按市场范围筛选 ============
 
-const stocksByMarket: Record<MarketKey, StockSnapshot[]> = {
-  all: baselineStocks,
-  sse: baselineStocks.filter((stock) => isInMarketScope(stock, "sse")),
-  szse: baselineStocks.filter((stock) => isInMarketScope(stock, "szse")),
-  hs300: baselineStocks.filter((stock) => isInMarketScope(stock, "hs300")),
-  zza500: baselineStocks.filter((stock) => isInMarketScope(stock, "zza500")),
-  cyb: baselineStocks.filter((stock) => isInMarketScope(stock, "cyb")),
-  kcb: baselineStocks.filter((stock) => isInMarketScope(stock, "kcb")),
-};
+/** 动态股票列表缓存（由 discoverStocks 提供，包含运行时发现的新股） */
+let dynamicStocks: StockSnapshot[] = baselineStocks;
+
+/** 获取动态股票列表，按市场范围筛选 */
+function getStocksByMarket(stocks: StockSnapshot[], market: MarketKey): StockSnapshot[] {
+  return filterByMarketScope(stocks, market);
+}
 
 // ============ 对外接口函数 ============
 
@@ -1200,6 +1170,9 @@ export async function getTreemapData(
   market: MarketKey,
   period: HeatmapPeriodKey = "day"
 ): Promise<TreemapResponse> {
+  // 先动态发现股票列表（含新股）
+  dynamicStocks = await discoverStocks();
+
   const [quoteResult, summaryResult, indexResult] = await Promise.allSettled([
     getCachedQuotes(),
     getCachedSummary(),
@@ -1223,7 +1196,7 @@ export async function getTreemapData(
 
   hasLoggedFallbackWarning = false;
 
-  const marketStocks = stocksByMarket[market];
+  const marketStocks = getStocksByMarket(dynamicStocks, market);
   const nodes = groupStocksByBoard(marketStocks, quoteResult.value.quotes, period);
   const computedSummary = summarizeMarketBreadth(marketStocks, quoteResult.value.quotes, period);
   const computedIndexChangePct = computeWeightedChange(marketStocks, quoteResult.value.quotes, period);
@@ -1268,6 +1241,9 @@ export async function getQuoteData(
   market: MarketKey,
   period: HeatmapPeriodKey = "day"
 ): Promise<QuotesResponse> {
+  // 先动态发现股票列表（含新股）
+  dynamicStocks = await discoverStocks();
+
   const quoteResult = await Promise.allSettled([getCachedQuotes()]);
 
   if (quoteResult[0].status !== "fulfilled") {
@@ -1282,7 +1258,7 @@ export async function getQuoteData(
 
   hasLoggedFallbackWarning = false;
 
-  const marketStocks = stocksByMarket[market];
+  const marketStocks = getStocksByMarket(dynamicStocks, market);
   const quotes: Record<string, QuoteValue> = {};
 
   for (const stock of marketStocks) {
@@ -1307,6 +1283,9 @@ export async function getQuoteData(
 export async function getOverviewData(
   period: HeatmapPeriodKey = "day"
 ): Promise<MarketOverviewResponse> {
+  // 先动态发现股票列表（含新股）
+  dynamicStocks = await discoverStocks();
+
   const [quoteResult, indexResult] = await Promise.allSettled([
     getCachedQuotes(),
     getCachedMarketIndex(),
@@ -1321,7 +1300,7 @@ export async function getOverviewData(
     }
 
     const fallbackMarkets: MarketOverviewItem[] = marketKeys.map((market) => {
-      const stocks = stocksByMarket[market];
+      const stocks = getStocksByMarket(dynamicStocks, market);
       const changePct = computeWeightedChange(stocks, {}, period);
       return {
         market,
@@ -1345,7 +1324,7 @@ export async function getOverviewData(
   const indexSummaries = indexResult.status === "fulfilled" ? indexResult.value.summaries : null;
 
   const markets: MarketOverviewItem[] = marketKeys.map((market) => {
-    const stocks = stocksByMarket[market];
+    const stocks = getStocksByMarket(dynamicStocks, market);
     const remoteIndex = indexSummaries?.[market];
     const remoteIndexChange = extractPeriodChange(remoteIndex?.changes, period, Number.NaN);
     const changePct = Number.isFinite(remoteIndexChange)
