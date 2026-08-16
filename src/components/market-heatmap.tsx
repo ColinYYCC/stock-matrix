@@ -894,7 +894,8 @@ export function MarketHeatmap({ locale: initialLocale }: { locale: Locale; messa
       if (contentWidth <= 2 || contentHeight <= 2) continue;
 
       const subBoards = groupStocksBySubBoard(boardBox.item.children, fallbackQuotes);
-      const shouldNestSubBoards = subBoards.length > 1;
+      // 子板块筛选激活时强制显示子板块标题栏，让用户可双击退出
+      const shouldNestSubBoards = subBoards.length > 1 || (subBoardFilter !== null && subBoards.length >= 1);
 
       if (!shouldNestSubBoards) {
         const stockBoxes = binaryTreemap(
@@ -953,7 +954,7 @@ export function MarketHeatmap({ locale: initialLocale }: { locale: Locale; messa
 
     return { stockRects, boardRects, subBoardRects };
     // 不依赖前端 quotes，只依赖 treemap API 返回的数据（含服务端算好的实时市值）
-  }, [canvasSize.height, canvasSize.width, visibleTreemapData]);
+  }, [canvasSize.height, canvasSize.width, subBoardFilter, visibleTreemapData]);
 
   // ============ 树图布局：行情合并（轻量操作，只更新价格和涨跌幅） ============
   const layout = useMemo(() => {
@@ -1490,9 +1491,15 @@ export function MarketHeatmap({ locale: initialLocale }: { locale: Locale; messa
           }
           const bounds = canvas!.getBoundingClientRect();
           const world = toWorldPoint(state.startClientX - bounds.left, state.startClientY - bounds.top);
-          const boardTitle = pickFunctions.pickBoardTitle(world.x, world.y) ?? pickFunctions.pickBoard(world.x, world.y);
-          if (boardTitle) {
-            setBoardFilter((current) => current === boardTitle.name ? allBoardsValue : boardTitle.name);
+          const subBoardTitle = pickFunctions.pickSubBoardTitle(world.x, world.y);
+          if (subBoardTitle) {
+            const subName = subBoardTitle.name;
+            setSubBoardFilter((current) => current === subName ? null : subName);
+          } else {
+            const boardTitle = pickFunctions.pickBoardTitle(world.x, world.y) ?? pickFunctions.pickBoard(world.x, world.y);
+            if (boardTitle) {
+              setBoardFilter((current) => current === boardTitle.name ? allBoardsValue : boardTitle.name);
+            }
           }
           state.lastTapTs = 0;
           state.lastTapX = 0;

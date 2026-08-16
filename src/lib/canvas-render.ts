@@ -252,8 +252,8 @@ export function fitFontSizeToWidth(
  * 绘制单只股票的文字标签
  *
  * 根据色块大小分 4 级显示：
- * - Large: 宽>=108 高>=58 → 股票名 + 涨跌幅 + 价格
- * - Stacked: 宽>=28 高>=20 → 股票名(上) + 涨跌幅(下)
+ * - Large: 宽>=108 高>=58 → 股票名 + 涨跌幅 + 价格（宽>130 高>72时）
+ * - Stacked: 宽>=28 高>=20 → 股票名(上) + 涨跌幅(下) + 价格（宽>=58 高>=48时加第三行）
  * - Inline: 宽>=24 高>=10 → 股票名 + 涨跌幅(单行)
  * - 更小 → 不绘制文字
  */
@@ -308,8 +308,8 @@ export function drawStockLabel(context: CanvasRenderingContext2D, stock: StockRe
       context.font = heatmapFont(650, detailSize);
       drawClippedText(context, formatChange(stock.changePct), centerX, centerY + detailSize * 0.3, stock.x + clipPadding, stock.y + clipPadding, clipWidth, clipHeight);
 
-      if (displayWidth > 180 && displayHeight > 100) {
-        context.font = heatmapFont(550, Math.max(11 * screenUnit, detailSize - 1 * screenUnit));
+      if (displayWidth > 130 && displayHeight > 72) {
+        context.font = heatmapFont(550, Math.max(10 * screenUnit, detailSize - 1 * screenUnit));
         drawClippedText(context, formatPrice(stock.price), centerX, centerY + detailSize * 1.35, stock.x + clipPadding, stock.y + clipPadding, clipWidth, clipHeight);
       }
       return;
@@ -328,6 +328,12 @@ export function drawStockLabel(context: CanvasRenderingContext2D, stock: StockRe
       if (displayHeight >= 20) {
         context.font = heatmapFont(650, detailSize);
         drawClippedText(context, displayWidth >= 58 ? formatChange(stock.changePct) : formatCompactChange(stock.changePct), stock.x + textInsetX, stock.y + textInsetY + titleSize + detailSize + 1.5 * screenUnit, stock.x + clipPadding, stock.y + clipPadding, clipWidth, clipHeight);
+      }
+      // 色块足够大时，在涨跌幅下方显示价格
+      if (displayWidth >= 58 && displayHeight >= 48) {
+        const priceSize = Math.min(detailSize * 0.82, 10 * screenUnit);
+        context.font = heatmapFont(550, priceSize);
+        drawClippedText(context, formatPrice(stock.price), stock.x + textInsetX, stock.y + textInsetY + titleSize + detailSize * 1.65 + 1.5 * screenUnit, stock.x + clipPadding, stock.y + clipPadding, clipWidth, clipHeight);
       }
       return;
     }
