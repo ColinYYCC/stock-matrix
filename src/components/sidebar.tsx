@@ -107,6 +107,7 @@ type SidebarProps = {
   market: MarketKey;
   period: HeatmapPeriodKey;
   boardFilter: string;
+  subBoardFilter: string | null;
   trendFilter: string;
   priceColorMode: PriceColorMode;
   marketSummaries: Partial<Record<MarketKey, MarketSummary>>;
@@ -119,6 +120,7 @@ type SidebarProps = {
   onMarketChange: (market: MarketKey) => void;
   onPeriodChange: (period: HeatmapPeriodKey) => void;
   onBoardFilterChange: (value: string) => void;
+  onSubBoardFilterChange: (value: string | null) => void;
   onTrendFilterChange: (value: string) => void;
   onResetView: () => void;
   onToggleFullscreen: () => void;
@@ -133,6 +135,7 @@ export function Sidebar({
   market,
   period,
   boardFilter,
+  subBoardFilter,
   trendFilter,
   priceColorMode,
   marketSummaries,
@@ -145,6 +148,7 @@ export function Sidebar({
   onMarketChange,
   onPeriodChange,
   onBoardFilterChange,
+  onSubBoardFilterChange,
   onTrendFilterChange,
   onResetView,
   onToggleFullscreen,
@@ -293,6 +297,19 @@ export function Sidebar({
                 </option>
               ))}
             </select>
+            {subBoardFilter && (
+              <div className="mt-1 flex items-center justify-between border border-brand/40 bg-brand/10 px-1.5 py-1">
+                <span className="min-w-0 truncate font-semibold text-[11px] text-foreground">{subBoardFilter}</span>
+                <button
+                  type="button"
+                  onClick={() => onSubBoardFilterChange(null)}
+                  className="ml-1 shrink-0 text-muted-foreground transition-colors hover:text-foreground"
+                  aria-label="清除子板块筛选"
+                >
+                  <X className="size-3.5" />
+                </button>
+              </div>
+            )}
           </div>
 
           {/* 涨跌筛选 */}

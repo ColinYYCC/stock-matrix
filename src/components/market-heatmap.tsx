@@ -449,6 +449,7 @@ export function MarketHeatmap({ locale: initialLocale }: { locale: Locale; messa
   const [market, setMarket] = useState<MarketKey>("all");
   const [period, setPeriod] = useState<HeatmapPeriodKey>("day");
   const [boardFilter, setBoardFilter] = useState(allBoardsValue);
+  const [subBoardFilter, setSubBoardFilter] = useState<string | null>(null);
   const [trendFilter, setTrendFilter] = useState(allTrendsValue);
   const [marketSummaries, setMarketSummaries] = useState<Partial<Record<MarketKey, MarketSummary>>>({});
   const [treemapData, setTreemapData] = useState<TreemapResponse | null>(null);
@@ -703,6 +704,16 @@ export function MarketHeatmap({ locale: initialLocale }: { locale: Locale; messa
     if (!treemapData.nodes.some((node) => node.name === boardFilter)) setBoardFilter(allBoardsValue);
   }, [boardFilter, treemapData]);
 
+  // 子板块筛选失效保护：板块切换后，如果当前子板块不存在于新板块中，则重置
+  useEffect(() => {
+    if (!subBoardFilter || !treemapData || boardFilter === allBoardsValue) return;
+    const board = treemapData.nodes.find((node) => node.name === boardFilter);
+    if (!board) { setSubBoardFilter(null); return; }
+    if (!board.children.some((stock) => (stock.subBoardName || stock.boardName) === subBoardFilter)) {
+      setSubBoardFilter(null);
+    }
+  }, [boardFilter, subBoardFilter, treemapData]);
+
   useEffect(() => {
     setHoveredStockCode(null);
     setHoveredBoardName(null);
@@ -711,6 +722,7 @@ export function MarketHeatmap({ locale: initialLocale }: { locale: Locale; messa
     setSelectedStockCode(null);
     setSelectedBoardName(null);
     setSelectedSubBoardName(null);
+    setSubBoardFilter(null);
     setView({ scale: 1, x: 0, y: 0 });
   }, [boardFilter, trendFilter]);
 
@@ -756,6 +768,37 @@ export function MarketHeatmap({ locale: initialLocale }: { locale: Locale; messa
       }
     }
 
+    // 子板块筛选：在大板块筛选基础上，进一步只保留该子板块下的股票
+    if (boardFilter !== allBoardsValue && subBoardFilter) {
+      const board = result.nodes.find((node) => node.name === boardFilter);
+      if (board) {
+        const subChildren = board.children.filter((stock) => (stock.subBoardName || stock.boardName) === subBoardFilter);
+        if (subChildren.length > 0) {
+          let advanceCount = 0, flatCount = 0, declineCount = 0, turnoverAmount = 0;
+          for (const stock of subChildren) {
+            const changePct = stock.changePct;
+            if (changePct > flatThreshold) advanceCount += 1;
+            else if (changePct < -flatThreshold) declineCount += 1;
+            else flatCount += 1;
+            turnoverAmount += stock.turnoverAmount;
+          }
+          const subBoardNode = {
+            ...board,
+            children: subChildren,
+            stockCount: subChildren.length,
+            value: subChildren.reduce((sum, stock) => sum + stock.value, 0),
+          };
+          result = {
+            ...result,
+            stockCount: subChildren.length,
+            boardCount: 1,
+            summary: { ...result.summary, advanceCount, flatCount, declineCount, turnoverAmount, indexChangePct: weightedAverageChange(subChildren, {} as QuoteMap) },
+            nodes: [subBoardNode],
+          };
+        }
+      }
+    }
+
     // 涨跌筛选
     if (trendFilter !== allTrendsValue) {
       const filteredNodes = result.nodes.map((node) => {
@@ -783,7 +826,7 @@ export function MarketHeatmap({ locale: initialLocale }: { locale: Locale; messa
     }
 
     return result;
-  }, [boardFilter, trendFilter, treemapData]);
+  }, [boardFilter, subBoardFilter, trendFilter, treemapData]);
 
   // 侧边栏概览：用实时行情计算涨跌家数和成交额（轻量计算，不影响布局性能）
   const marketOverview = useMemo<MarketOverview | null>(() => {
@@ -1020,10 +1063,10 @@ export function MarketHeatmap({ locale: initialLocale }: { locale: Locale; messa
   const activeInspectorStock = inspectorStocks[0] ?? null;
   const activeInspectorTitle = useMemo(() => {
     if (!activeBoardName) return activeBoardName;
-    const subBoardName = highlightedStock?.subBoardName || activeSubBoardName;
+    const subBoardName = highlightedStock?.subBoardName || activeSubBoardName || subBoardFilter;
     if (subBoardName && subBoardName !== activeBoardName) return `${activeBoardName} - ${subBoardName}`;
     return activeBoardName;
-  }, [activeBoardName, highlightedStock, activeSubBoardName]);
+  }, [activeBoardName, highlightedStock, activeSubBoardName, subBoardFilter]);
 
   // ============ 移动端个股详情面板的回调 ============
   // 打开雪球页面查看更多详情
@@ -1322,7 +1365,9 @@ export function MarketHeatmap({ locale: initialLocale }: { locale: Locale; messa
     }
     const subBoardTitle = pickFunctions.pickSubBoardTitle(world.x, world.y);
     if (subBoardTitle) {
-      setBoardFilter((current) => current === subBoardTitle.boardName ? allBoardsValue : subBoardTitle.boardName);
+      // 双击子板块标题栏：聚焦/取消聚焦到该子板块
+      const subName = subBoardTitle.name;
+      setSubBoardFilter((current) => current === subName ? null : subName);
       return;
     }
     const stock = pickFunctions.pickStock(world.x, world.y);
@@ -1615,7 +1660,9 @@ export function MarketHeatmap({ locale: initialLocale }: { locale: Locale; messa
           isFullscreen={isFullscreen}
           onMarketChange={(m) => { setMarket(m); if (isMobile) setSidebarOpen(false); }}
           onPeriodChange={setPeriod}
-          onBoardFilterChange={(v) => { setBoardFilter(v); if (isMobile) setSidebarOpen(false); }}
+          onBoardFilterChange={(v) => { setBoardFilter(v); setSubBoardFilter(null); if (isMobile) setSidebarOpen(false); }}
+          subBoardFilter={subBoardFilter}
+          onSubBoardFilterChange={setSubBoardFilter}
           onTrendFilterChange={setTrendFilter}
           onResetView={() => setView({ scale: 1, x: 0, y: 0 })}
           onToggleFullscreen={() => setIsFullscreen((c) => !c)}
