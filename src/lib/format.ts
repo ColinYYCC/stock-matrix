@@ -87,8 +87,11 @@ export function formatTurnoverAmount(value: number, locale: Locale) {
   }).format(value);
 }
 
-/** 判断成交额变化趋势：放量 / 缩量 / 持平 */
+/** 判断成交额变化趋势：放量 / 缩量 / 持平 / 未知（无对比数据） */
 export function getTurnoverTrend(delta: number) {
+  if (!Number.isFinite(delta)) {
+    return "unknown" as const;
+  }
   if (delta > 0) {
     return "up" as const;
   }

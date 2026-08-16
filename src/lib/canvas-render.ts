@@ -117,7 +117,7 @@ function strokeRoundRect(
  * 在圆角矩形顶部画一道微妙的白色/浅色高光弧线，模拟玻璃反光
  * 这是 Liquid Glass 的灵魂——让色块看起来像一块发光的玻璃
  */
-function drawLiquidGlassHighlight(
+export function drawLiquidGlassHighlight(
   context: CanvasRenderingContext2D,
   x: number, y: number, width: number, height: number, radius: number,
   /** 高光颜色，默认半透明白色 */ color = "rgba(255, 255, 255, 0.35)",
@@ -148,7 +148,7 @@ function drawLiquidGlassHighlight(
  * iOS 26 Liquid Glass 内阴影效果
  * 在圆角矩形内部边缘画一圈极淡的内阴影，增加立体深度感
  */
-function drawLiquidGlassInnerShadow(
+export function drawLiquidGlassInnerShadow(
   context: CanvasRenderingContext2D,
   x: number, y: number, width: number, height: number, radius: number,
   /** 阴影颜色 */ shadowColor = "rgba(0, 0, 0, 0.08)",

@@ -13,25 +13,19 @@ import {
   Loader2,
   Moon,
   Palette,
-  Settings2,
   Sun,
-  TrendingDown,
-  TrendingUp,
   X,
   ExternalLink,
   Info,
 } from "lucide-react";
 import { toast } from "sonner";
 
-import { Button } from "@/components/ui/button";
 import { Sidebar } from "@/components/sidebar";
 import { Inspector, type InspectorStyle } from "@/components/inspector";
 import { MobileStockSheet } from "@/components/mobile-stock-sheet";
 import { ColorLegend } from "@/components/color-legend";
 import { cn } from "@/lib/utils";
-import { clamp, formatCompactChange } from "@/lib/format";
-import { getLegendGradient } from "@/lib/heatmap-color";
-import { getSparklineUrl, getDailyKlineUrl } from "@/lib/stock-image";
+import { clamp } from "@/lib/format";
 import { drawHeatmap, drawHeatmapHighlight, heatmapCanvasThemes } from "@/lib/canvas-render";
 import { binaryTreemap } from "@/lib/treemap";
 import { getMessages, type HeatmapMessages } from "@/lib/i18n";
@@ -45,7 +39,6 @@ import {
   MAX_ZOOM,
 } from "@/hooks/use-canvas-interaction";
 import {
-  heatmapPeriodKeys,
   type BoardRect,
   type DisplayMode,
   type HeatmapPeriodKey,
@@ -168,8 +161,9 @@ function groupStocksBySubBoard<
 // ============ 加载状态遮罩 ============
 
 /** 加载中的骨架屏 */
-function HeatmapLoadingOverlay({ displayMode }: { displayMode: DisplayMode }) {
+function HeatmapLoadingOverlay({ displayMode, locale }: { displayMode: DisplayMode; locale: Locale }) {
   const isLightMode = displayMode === "light";
+  const messages = getMessages(locale).heatmap;
   return (
     <div
       role="status"
@@ -182,7 +176,7 @@ function HeatmapLoadingOverlay({ displayMode }: { displayMode: DisplayMode }) {
     >
       <div className="flex items-center gap-3">
         <Loader2 className="size-5 shrink-0 animate-spin text-brand" aria-hidden />
-        <span className="text-[15px] font-semibold tracking-tight sm:text-base">热力图加载中...</span>
+        <span className="text-[15px] font-semibold tracking-tight sm:text-base">{messages.loading}</span>
       </div>
     </div>
   );
@@ -286,9 +280,9 @@ function SettingsDrawer({
               <div className="space-y-6">
                 {/* 界面风格切换：iOS 26 液态玻璃 / 经典 */}
                 <section>
-                  <h3 className="text-sm font-semibold">界面风格</h3>
+                  <h3 className="text-sm font-semibold">{messages.designStyleLabel}</h3>
                   <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
-                    切换 iOS 26 液态玻璃风格和经典风格
+                    {messages.designStyleDescription}
                   </p>
                   <div className="mt-3 grid gap-2 sm:grid-cols-2">
                     <button
@@ -303,7 +297,7 @@ function SettingsDrawer({
                       )}
                     >
                       <span className="size-2.5 rounded-full bg-gradient-to-br from-cyan-400 to-purple-500" />
-                      iOS 26 液态玻璃
+                      {messages.designStyleIOS26}
                     </button>
                     <button
                       type="button"
@@ -317,7 +311,7 @@ function SettingsDrawer({
                       )}
                     >
                       <span className="size-2.5 rounded-full bg-slate-500" />
-                      经典风格
+                      {messages.designStyleClassic}
                     </button>
                   </div>
                 </section>
@@ -512,13 +506,10 @@ export function MarketHeatmap({ locale: initialLocale }: { locale: Locale; messa
 
   // ============ 交互 Hook ============
   const { toWorldPoint, pickFunctions, dragStateRef, touchStateRef } = useCanvasInteraction({
-    canvasSize,
     view,
-    setView,
     stockRectsRef: lastStockRectsRef,
     boardRectsRef: lastBoardRectsRef,
     subBoardRectsRef: lastSubBoardRectsRef,
-    isMobile,
   });
 
   // ============ 加载用户偏好设置 ============
@@ -757,8 +748,8 @@ export function MarketHeatmap({ locale: initialLocale }: { locale: Locale; messa
           ...result,
           stockCount: selectedBoard.stockCount,
           boardCount: 1,
-          // 注意：turnoverPreviousAmount 和 turnoverDelta 保留全市场原始值，
-          // 因为 API 没有提供单板块的"昨日成交额"，硬编码为 0 会让侧边栏误显示"持平"
+          // 注意：turnoverPreviousAmount 和 turnoverDelta 保留原始值，
+          // 非全市场范围下为 NaN，前端会显示"无对比"而非误显示"持平"
           summary: { ...result.summary, advanceCount, flatCount, declineCount, turnoverAmount, indexChangePct: weightedAverageChange(selectedBoard.children, {} as QuoteMap) },
           nodes: [selectedBoard],
         };
@@ -1495,7 +1486,7 @@ export function MarketHeatmap({ locale: initialLocale }: { locale: Locale; messa
     }
 
     // touchcancel：触摸被系统中断（如来电），不应触发任何 tap 操作
-    function onTouchCancel(event: TouchEvent) {
+    function onTouchCancel() {
       const state = touchStateRef.current;
       if (state.singleTapTimer !== null) {
         clearTimeout(state.singleTapTimer);
@@ -1701,7 +1692,7 @@ export function MarketHeatmap({ locale: initialLocale }: { locale: Locale; messa
               listMaxHeight={inspectorListMaxHeight}
             />
 
-            {loading && <HeatmapLoadingOverlay displayMode={displayMode} />}
+            {loading && <HeatmapLoadingOverlay displayMode={displayMode} locale={locale} />}
 
             {error && !loading && (
               <div className="absolute inset-0 z-40 flex items-center justify-center bg-background/80 text-sm text-destructive backdrop-blur-sm">
@@ -1742,37 +1733,25 @@ export function MarketHeatmap({ locale: initialLocale }: { locale: Locale; messa
       )}
 
       {/* 设置面板：iOS 26 风格和经典风格各自有独立组件 */}
-      {isIOS26 ? (
-        <SettingsDrawerIOS26
-          open={settingsOpen}
-          tab={settingsTab}
-          messages={messages}
-          displayMode={displayMode}
-          priceColorMode={priceColorMode}
-          designStyle={designStyle}
-          areaTipMessage={areaTipMessage}
-          onClose={() => setSettingsOpen(false)}
-          onTabChange={setSettingsTab}
-          onDisplayModeChange={setDisplayMode}
-          onPriceColorModeChange={setPriceColorMode}
-          onDesignStyleChange={setDesignStyle}
-        />
-      ) : (
-        <SettingsDrawer
-          open={settingsOpen}
-          tab={settingsTab}
-          messages={messages}
-          displayMode={displayMode}
-          priceColorMode={priceColorMode}
-          designStyle={designStyle}
-          areaTipMessage={areaTipMessage}
-          onClose={() => setSettingsOpen(false)}
-          onTabChange={setSettingsTab}
-          onDisplayModeChange={setDisplayMode}
-          onPriceColorModeChange={setPriceColorMode}
-          onDesignStyleChange={setDesignStyle}
-        />
-      )}
+      {(() => {
+        const SettingsDrawerComponent = isIOS26 ? SettingsDrawerIOS26 : SettingsDrawer;
+        return (
+          <SettingsDrawerComponent
+            open={settingsOpen}
+            tab={settingsTab}
+            messages={messages}
+            displayMode={displayMode}
+            priceColorMode={priceColorMode}
+            designStyle={designStyle}
+            areaTipMessage={areaTipMessage}
+            onClose={() => setSettingsOpen(false)}
+            onTabChange={setSettingsTab}
+            onDisplayModeChange={setDisplayMode}
+            onPriceColorModeChange={setPriceColorMode}
+            onDesignStyleChange={setDesignStyle}
+          />
+        );
+      })()}
     </div>
   );
 }

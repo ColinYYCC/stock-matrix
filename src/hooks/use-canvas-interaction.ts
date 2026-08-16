@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 import type { BoardRect, StockRect, SubBoardRect, ViewState } from "@/types/heatmap";
 import { clamp } from "@/lib/format";
 
@@ -37,20 +37,19 @@ export type PickFunctions = {
  * 改进点：把原项目内联在组件里的事件处理逻辑提取成独立 hook。
  */
 export function useCanvasInteraction(params: {
-  canvasSize: { width: number; height: number };
   view: ViewState;
-  setView: React.Dispatch<React.SetStateAction<ViewState>>;
   stockRectsRef: React.RefObject<StockRect[]>;
   boardRectsRef: React.RefObject<BoardRect[]>;
   subBoardRectsRef: React.RefObject<SubBoardRect[]>;
-  isMobile: boolean;
 }) {
-  const { canvasSize, view, setView, stockRectsRef, boardRectsRef, subBoardRectsRef, isMobile } = params;
+  const { view, stockRectsRef, boardRectsRef, subBoardRectsRef } = params;
 
   // 用 ref 存最新的 view 值，让 toWorldPoint 不依赖 view 变化
   // 这样缩放/平移时 toWorldPoint 不会重建，触摸事件监听器也不会频繁重绑
   const viewRef = useRef(view);
-  viewRef.current = view;
+  useEffect(() => {
+    viewRef.current = view;
+  }, [view]);
 
   const dragStateRef = useRef({
     active: false,

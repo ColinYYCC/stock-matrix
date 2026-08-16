@@ -3,7 +3,6 @@
 import {
   Moon,
   Palette,
-  Settings2,
   Sun,
   X,
   ExternalLink,
@@ -126,9 +125,9 @@ export function SettingsDrawer({
               <div className="space-y-6">
                 {/* 界面风格切换：iOS 26 / 经典 */}
                 <section>
-                  <h3 className="text-sm font-semibold">界面风格</h3>
+                  <h3 className="text-sm font-semibold">{messages.designStyleLabel}</h3>
                   <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
-                    切换 iOS 26 液态玻璃风格和经典风格
+                    {messages.designStyleDescription}
                   </p>
                   <div className="ios26-glass-segmented mt-3 grid gap-2 rounded-[9px] p-1 sm:grid-cols-2">
                     <button
@@ -143,7 +142,7 @@ export function SettingsDrawer({
                       )}
                     >
                       <span className="size-2.5 rounded-full bg-gradient-to-br from-cyan-400 to-purple-500" />
-                      iOS 26 液态玻璃
+                      {messages.designStyleIOS26}
                     </button>
                     <button
                       type="button"
@@ -157,7 +156,7 @@ export function SettingsDrawer({
                       )}
                     >
                       <span className="size-2.5 rounded-full bg-slate-500" />
-                      经典风格
+                      {messages.designStyleClassic}
                     </button>
                   </div>
                 </section>

@@ -212,8 +212,14 @@ let hasLoggedFallbackWarning = false;
 
 /** 收盘数据锁定标记：一旦检测到已收盘且获取到有效数据，就锁定不再刷新 */
 let isMarketClosedAndLocked = false;
-let marketCloseLockTimestamp = 0;
 let lockDateString = ""; // 记录锁定时的日期，用于次日自动解锁
+
+/** 标记收盘锁定状态（在多处调用，逻辑完全一致） */
+function applyMarketCloseLock(): void {
+  isMarketClosedAndLocked = true;
+  const cst = new Date(Date.now() + CST_OFFSET_MS);
+  lockDateString = `${cst.getUTCFullYear()}-${cst.getUTCMonth() + 1}-${cst.getUTCDate()}`;
+}
 
 /** 判断当前是否已收盘（15:00 之后）且应该锁定数据 */
 function shouldLockAfterMarketClose(): boolean {
@@ -237,7 +243,6 @@ function checkAndResetLockIfNewDay(): void {
   // 如果日期变了，重置锁定状态
   if (isMarketClosedAndLocked && lockDateString && lockDateString !== currentDateString) {
     isMarketClosedAndLocked = false;
-    marketCloseLockTimestamp = 0;
     lockDateString = "";
     // 清除缓存，确保第二天获取最新数据
     quoteCache = null;
@@ -421,9 +426,6 @@ function parseSinaQuotes(rawText: string) {
   const quotes: Record<string, RemoteQuoteValue> = {};
   let updatedAt = "";
   const pattern = /var hq_str_([a-z]{2}\d+)="([^"]*)";/g;
-
-  // 用 TextDecoder 解码 latin1（改进：原项目用 Buffer.from().toString('latin1')，不兼容 Edge Runtime）
-  const decoder = new TextDecoder("latin1");
 
   for (const match of rawText.matchAll(pattern)) {
     const code = decodeSinaSymbol(match[1]);
@@ -851,10 +853,7 @@ async function getCachedMarketIndex() {
   }
 
   if (shouldLockAfterMarketClose() && indexCache && !isMarketClosedAndLocked) {
-    isMarketClosedAndLocked = true;
-    marketCloseLockTimestamp = now;
-    const cst = new Date(now + CST_OFFSET_MS);
-    lockDateString = `${cst.getUTCFullYear()}-${cst.getUTCMonth() + 1}-${cst.getUTCDate()}`;
+    applyMarketCloseLock();
     return indexCache;
   }
 
@@ -870,10 +869,7 @@ async function getCachedMarketIndex() {
     .then((snapshot) => {
       indexCache = snapshot;
       if (shouldLockAfterMarketClose() && !isMarketClosedAndLocked) {
-        isMarketClosedAndLocked = true;
-        marketCloseLockTimestamp = Date.now();
-        const cst = new Date(Date.now() + CST_OFFSET_MS);
-        lockDateString = `${cst.getUTCFullYear()}-${cst.getUTCMonth() + 1}-${cst.getUTCDate()}`;
+        applyMarketCloseLock();
       }
       return snapshot;
     })
@@ -901,10 +897,7 @@ async function getCachedQuotes() {
 
   // 检查是否刚进入收盘状态，需要锁定
   if (shouldLockAfterMarketClose() && quoteCache && !isMarketClosedAndLocked) {
-    isMarketClosedAndLocked = true;
-    marketCloseLockTimestamp = now;
-    const cst = new Date(now + CST_OFFSET_MS);
-    lockDateString = `${cst.getUTCFullYear()}-${cst.getUTCMonth() + 1}-${cst.getUTCDate()}`;
+    applyMarketCloseLock();
     return quoteCache;
   }
 
@@ -919,12 +912,8 @@ async function getCachedQuotes() {
   quotePromise = fetchQuotesFromRemote(dynamicStocks)
     .then((snapshot) => {
       quoteCache = snapshot;
-      // 获取数据后检查是否需要锁定
       if (shouldLockAfterMarketClose() && !isMarketClosedAndLocked) {
-        isMarketClosedAndLocked = true;
-        marketCloseLockTimestamp = Date.now();
-        const cst = new Date(Date.now() + CST_OFFSET_MS);
-        lockDateString = `${cst.getUTCFullYear()}-${cst.getUTCMonth() + 1}-${cst.getUTCDate()}`;
+        applyMarketCloseLock();
       }
       return snapshot;
     })
@@ -951,10 +940,7 @@ async function getCachedSummary() {
   }
 
   if (shouldLockAfterMarketClose() && summaryCache && !isMarketClosedAndLocked) {
-    isMarketClosedAndLocked = true;
-    marketCloseLockTimestamp = now;
-    const cst = new Date(now + CST_OFFSET_MS);
-    lockDateString = `${cst.getUTCFullYear()}-${cst.getUTCMonth() + 1}-${cst.getUTCDate()}`;
+    applyMarketCloseLock();
     return summaryCache;
   }
 
@@ -970,10 +956,7 @@ async function getCachedSummary() {
     .then((snapshot) => {
       summaryCache = snapshot;
       if (shouldLockAfterMarketClose() && !isMarketClosedAndLocked) {
-        isMarketClosedAndLocked = true;
-        marketCloseLockTimestamp = Date.now();
-        const cst = new Date(Date.now() + CST_OFFSET_MS);
-        lockDateString = `${cst.getUTCFullYear()}-${cst.getUTCMonth() + 1}-${cst.getUTCDate()}`;
+        applyMarketCloseLock();
       }
       return snapshot;
     })
@@ -1067,8 +1050,8 @@ function summarizeMarketBreadth(
     flatCount,
     declineCount,
     turnoverAmount,
-    turnoverPreviousAmount: 0,
-    turnoverDelta: 0,
+    turnoverPreviousAmount: Number.NaN,
+    turnoverDelta: Number.NaN,
   };
 }
 
@@ -1158,11 +1141,6 @@ function buildFallbackQuotes(market: MarketKey, period: HeatmapPeriodKey): Quote
 /** 动态股票列表缓存（由 discoverStocks 提供，包含运行时发现的新股） */
 let dynamicStocks: StockSnapshot[] = baselineStocks;
 
-/** 获取动态股票列表，按市场范围筛选 */
-function getStocksByMarket(stocks: StockSnapshot[], market: MarketKey): StockSnapshot[] {
-  return filterByMarketScope(stocks, market);
-}
-
 // ============ 对外接口函数 ============
 
 /** 获取热力图树图数据 */
@@ -1196,7 +1174,7 @@ export async function getTreemapData(
 
   hasLoggedFallbackWarning = false;
 
-  const marketStocks = getStocksByMarket(dynamicStocks, market);
+  const marketStocks = filterByMarketScope(dynamicStocks, market);
   const nodes = groupStocksByBoard(marketStocks, quoteResult.value.quotes, period);
   const computedSummary = summarizeMarketBreadth(marketStocks, quoteResult.value.quotes, period);
   const computedIndexChangePct = computeWeightedChange(marketStocks, quoteResult.value.quotes, period);
@@ -1258,7 +1236,7 @@ export async function getQuoteData(
 
   hasLoggedFallbackWarning = false;
 
-  const marketStocks = getStocksByMarket(dynamicStocks, market);
+  const marketStocks = filterByMarketScope(dynamicStocks, market);
   const quotes: Record<string, QuoteValue> = {};
 
   for (const stock of marketStocks) {
@@ -1300,7 +1278,7 @@ export async function getOverviewData(
     }
 
     const fallbackMarkets: MarketOverviewItem[] = marketKeys.map((market) => {
-      const stocks = getStocksByMarket(dynamicStocks, market);
+      const stocks = filterByMarketScope(dynamicStocks, market);
       const changePct = computeWeightedChange(stocks, {}, period);
       return {
         market,
@@ -1324,7 +1302,7 @@ export async function getOverviewData(
   const indexSummaries = indexResult.status === "fulfilled" ? indexResult.value.summaries : null;
 
   const markets: MarketOverviewItem[] = marketKeys.map((market) => {
-    const stocks = getStocksByMarket(dynamicStocks, market);
+    const stocks = filterByMarketScope(dynamicStocks, market);
     const remoteIndex = indexSummaries?.[market];
     const remoteIndexChange = extractPeriodChange(remoteIndex?.changes, period, Number.NaN);
     const changePct = Number.isFinite(remoteIndexChange)

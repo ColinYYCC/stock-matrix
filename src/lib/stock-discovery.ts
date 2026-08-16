@@ -81,10 +81,9 @@ const INDUSTRY_TO_BOARD: Record<string, string> = {
   通用设备: "机械装备", 专用设备: "机械装备", 工程机械: "机械装备",
   轨交设备: "机械装备", 自动化设备: "机械装备", 油服工程: "机械装备",
 
-  // ===== 食品饮料 (7) =====
+  // ===== 食品饮料 (6) =====
   白酒: "食品饮料", 调味发酵品: "食品饮料", 食品加工: "食品饮料",
   饮料乳品: "食品饮料", 休闲食品: "食品饮料", 非白酒: "食品饮料",
-  农产品加工: "食品饮料",
 
   // ===== 消费零售 (17) =====
   一般零售: "消费零售", 专业连锁: "消费零售", 贸易: "消费零售",
@@ -114,7 +113,8 @@ const INDUSTRY_TO_BOARD: Record<string, string> = {
   // ===== 农林牧渔 (10) =====
   养殖业: "农林牧渔", 种植业: "农林牧渔", 林业: "农林牧渔",
   渔业: "农林牧渔", 饲料: "农林牧渔", 农业综合: "农林牧渔",
-  农药兽药: "农林牧渔", 动物疫苗: "农林牧渔", 动物保健: "农林牧渔",
+  农产品加工: "农林牧渔", 农药兽药: "农林牧渔", 动物疫苗: "农林牧渔",
+  动物保健: "农林牧渔",
 
   // ===== 交运物流 (4) =====
   航运港口: "交运物流", 航空机场: "交运物流", 铁路公路: "交运物流",
@@ -353,26 +353,17 @@ export function mergeDiscoveredWithBaseline(
   for (const stock of discovered) {
     discoveredCodes.add(stock.code);
     const old = baselineMap.get(stock.code);
+    const boardName = stock.code in STOCK_OVERRIDE ? STOCK_OVERRIDE[stock.code] : stock.boardName;
 
     if (old) {
       // 已有股票：保留基线的 subBoardName，更新动态字段
-      // 白名单覆盖 boardName
-      let boardName = stock.boardName;
-      if (stock.code in STOCK_OVERRIDE) {
-        boardName = STOCK_OVERRIDE[stock.code];
-      }
-
       result.push({
         ...stock,
         boardName,
         subBoardName: old.subBoardName || stock.subBoardName,
       });
     } else {
-      // 新股：使用动态数据，白名单覆盖 boardName
-      let boardName = stock.boardName;
-      if (stock.code in STOCK_OVERRIDE) {
-        boardName = STOCK_OVERRIDE[stock.code];
-      }
+      // 新股：使用动态数据
       result.push({ ...stock, boardName });
     }
   }

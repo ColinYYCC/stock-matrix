@@ -85,6 +85,21 @@ type MarketSummary = {
   updatedAt: string;
 };
 
+/** 根据成交额趋势返回标签文字 */
+function getTrendLabel(trend: ReturnType<typeof getTurnoverTrend>, messages: HeatmapMessages): string {
+  if (trend === "up") return messages.turnoverIncreaseLabel;
+  if (trend === "down") return messages.turnoverDecreaseLabel;
+  if (trend === "unknown") return messages.turnoverNoComparisonLabel;
+  return messages.turnoverFlatLabel;
+}
+
+/** 根据成交额趋势返回颜色类名 */
+function getTrendColor(trend: ReturnType<typeof getTurnoverTrend>, riseTextClass: string, fallTextClass: string): string {
+  if (trend === "up") return riseTextClass;
+  if (trend === "down") return fallTextClass;
+  return "text-muted-foreground";
+}
+
 /** 侧边栏属性（和原版完全一样，只是换了皮肤） */
 type SidebarProps = {
   messages: HeatmapMessages;
@@ -396,33 +411,25 @@ export function Sidebar({
                 <div className="flex min-w-0 flex-col">
                   {(() => {
                     const turnoverTrend = getTurnoverTrend(marketOverview.turnoverDelta);
-                    const turnoverTrendLabel =
-                      turnoverTrend === "up"
-                        ? messages.turnoverIncreaseLabel
-                        : turnoverTrend === "down"
-                          ? messages.turnoverDecreaseLabel
-                          : messages.turnoverFlatLabel;
-                    const turnoverTrendColor =
-                      turnoverTrend === "up"
-                        ? riseTextClass
-                        : turnoverTrend === "down"
-                          ? fallTextClass
-                          : "text-muted-foreground";
+                    const trendLabel = getTrendLabel(turnoverTrend, messages);
+                    const trendColor = getTrendColor(turnoverTrend, riseTextClass, fallTextClass);
                     return (
                       <>
                         <p className="text-[10px] leading-tight tracking-[0.04em] text-muted-foreground">
                           {messages.comparedToYesterdayLabel}
-                          <span className={cn("ml-1 font-semibold", turnoverTrendColor)}>
-                            {turnoverTrendLabel}
+                          <span className={cn("ml-1 font-semibold", trendColor)}>
+                            {trendLabel}
                           </span>
                         </p>
                         <p
                           className={cn(
                             "mt-auto whitespace-nowrap pt-1 font-semibold tracking-[-0.01em] text-[13px] sm:text-[14px]",
-                            turnoverTrendColor
+                            trendColor
                           )}
                         >
-                          {formatTurnoverAmount(Math.abs(marketOverview.turnoverDelta), locale)}
+                          {turnoverTrend === "unknown"
+                            ? messages.turnoverNoComparisonLabel
+                            : formatTurnoverAmount(Math.abs(marketOverview.turnoverDelta), locale)}
                         </p>
                       </>
                     );
