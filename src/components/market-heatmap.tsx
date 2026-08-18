@@ -460,6 +460,9 @@ export function MarketHeatmap({ locale: initialLocale }: { locale: Locale; messa
   /** 当前数据的 updatedAt（用 ref 在轮询回调中比较新旧） */
   const updatedAtRef = useRef("");
   useEffect(() => { updatedAtRef.current = updatedAt; }, [updatedAt]);
+  /** treemapData 的 ref，轮询回调中判断是否有数据，避免在无数据时清除 error */
+  const treemapDataRef = useRef<TreemapResponse | null>(null);
+  useEffect(() => { treemapDataRef.current = treemapData; }, [treemapData]);
 
   // ============ 交互状态 ============
   const [canvasSize, setCanvasSize] = useState({ width: 1200, height: 760 });
@@ -681,7 +684,8 @@ export function MarketHeatmap({ locale: initialLocale }: { locale: Locale; messa
     useCallback(async () => {
       // 轮询失败时不设置 error 状态，保持现有数据继续显示
       // 只在首次加载（loadTreemap）失败时才显示 error 遮罩
-      try { await fetchQuotes(market, period); setError(null); } catch { /* 静默忽略，保持现有数据 */ }
+      // 只在已有 treemap 数据时才清除 error，避免首次加载失败后被轮询清除导致空白页面
+      try { await fetchQuotes(market, period); if (treemapDataRef.current) setError(null); } catch { /* 静默忽略，保持现有数据 */ }
     }, [fetchQuotes, market, period]),
     pollInterval,
   );
@@ -708,7 +712,7 @@ export function MarketHeatmap({ locale: initialLocale }: { locale: Locale; messa
 
   usePollWhileVisible(
     useCallback(async () => {
-      try { await fetchMarketSummaries(period); setError(null); } catch { /* 保持现有数据 */ }
+      try { await fetchMarketSummaries(period); if (treemapDataRef.current) setError(null); } catch { /* 保持现有数据 */ }
     }, [fetchMarketSummaries, period]),
     pollInterval,
   );
