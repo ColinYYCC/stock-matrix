@@ -660,8 +660,10 @@ export function MarketHeatmap({ locale: initialLocale }: { locale: Locale; messa
           }
         }
       }
-      if (!cancelled && lastError) setError(messages.errorLoad);
-      if (!cancelled) setLoading(false);
+      if (!cancelled) {
+        if (lastError) setError(messages.errorLoad);
+        setLoading(false);
+      }
     }
     loadTreemap();
     return () => { cancelled = true; };
@@ -682,10 +684,8 @@ export function MarketHeatmap({ locale: initialLocale }: { locale: Locale; messa
   // 现在同时轮询 treemapData 和 quotes，确保两者数据源一致
   usePollWhileVisible(
     useCallback(async () => {
-      // 轮询失败时不设置 error 状态，保持现有数据继续显示
-      // 只在首次加载（loadTreemap）失败时才显示 error 遮罩
       // 只在已有 treemap 数据时才清除 error，避免首次加载失败后被轮询清除导致空白页面
-      try { await fetchQuotes(market, period); if (treemapDataRef.current) setError(null); } catch { /* 静默忽略，保持现有数据 */ }
+      try { await fetchQuotes(market, period); if (treemapDataRef.current) setError(null); } catch { /* 静默忽略 */ }
     }, [fetchQuotes, market, period]),
     pollInterval,
   );
