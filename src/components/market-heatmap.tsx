@@ -628,6 +628,7 @@ export function MarketHeatmap({ locale: initialLocale }: { locale: Locale; messa
   }, [messages.errorLoad]);
 
   // ============ 加载 treemap 数据 ============
+  // 首次加载带重试：Serverless 冷启动时第一次请求可能失败，重试 2 次后仍失败才报错
   useEffect(() => {
     let cancelled = false;
     async function loadTreemap() {
@@ -640,13 +641,24 @@ export function MarketHeatmap({ locale: initialLocale }: { locale: Locale; messa
       setSelectedStockCode(null);
       setSelectedBoardName(null);
       setSelectedSubBoardName(null);
-      try {
-        await fetchTreemap(market, period);
-      } catch {
-        if (!cancelled) setError(messages.errorLoad);
-      } finally {
-        if (!cancelled) setLoading(false);
+      const maxRetries = 2;
+      const baseDelay = 800;
+      let lastError = false;
+      for (let attempt = 0; attempt <= maxRetries; attempt++) {
+        if (cancelled) break;
+        try {
+          await fetchTreemap(market, period);
+          lastError = false;
+          break;
+        } catch {
+          lastError = true;
+          if (attempt < maxRetries && !cancelled) {
+            await new Promise((r) => setTimeout(r, baseDelay * Math.pow(2, attempt)));
+          }
+        }
       }
+      if (!cancelled && lastError) setError(messages.errorLoad);
+      if (!cancelled) setLoading(false);
     }
     loadTreemap();
     return () => { cancelled = true; };
@@ -667,8 +679,10 @@ export function MarketHeatmap({ locale: initialLocale }: { locale: Locale; messa
   // 现在同时轮询 treemapData 和 quotes，确保两者数据源一致
   usePollWhileVisible(
     useCallback(async () => {
-      try { await fetchQuotes(market, period); } catch { setError(messages.errorLoad); }
-    }, [fetchQuotes, market, messages.errorLoad, period]),
+      // 轮询失败时不设置 error 状态，保持现有数据继续显示
+      // 只在首次加载（loadTreemap）失败时才显示 error 遮罩
+      try { await fetchQuotes(market, period); setError(null); } catch { /* 静默忽略，保持现有数据 */ }
+    }, [fetchQuotes, market, period]),
     pollInterval,
   );
 
@@ -684,6 +698,7 @@ export function MarketHeatmap({ locale: initialLocale }: { locale: Locale; messa
         setTreemapData(payload);
         setUpdatedAt(payload.updatedAt);
         updatedAtRef.current = payload.updatedAt;
+        setError(null);
       } catch {
         /* 保持现有 treemapData */
       }
@@ -693,7 +708,7 @@ export function MarketHeatmap({ locale: initialLocale }: { locale: Locale; messa
 
   usePollWhileVisible(
     useCallback(async () => {
-      try { await fetchMarketSummaries(period); } catch { /* 保持现有数据 */ }
+      try { await fetchMarketSummaries(period); setError(null); } catch { /* 保持现有数据 */ }
     }, [fetchMarketSummaries, period]),
     pollInterval,
   );
@@ -894,8 +909,7 @@ export function MarketHeatmap({ locale: initialLocale }: { locale: Locale; messa
       if (contentWidth <= 2 || contentHeight <= 2) continue;
 
       const subBoards = groupStocksBySubBoard(boardBox.item.children, fallbackQuotes);
-      // 子板块筛选激活时强制显示子板块标题栏，让用户可双击退出
-      const shouldNestSubBoards = subBoards.length > 1 || (subBoardFilter !== null && subBoards.length >= 1);
+      const shouldNestSubBoards = subBoards.length > 1 || subBoardFilter !== null;
 
       if (!shouldNestSubBoards) {
         const stockBoxes = binaryTreemap(
@@ -1080,6 +1094,11 @@ export function MarketHeatmap({ locale: initialLocale }: { locale: Locale; messa
     setSelectedStockCode(null);
     setSelectedBoardName(null);
     setSelectedSubBoardName(null);
+  }, []);
+
+  // 切换子板块筛选（双击子板块标题栏时调用）
+  const toggleSubBoardFilter = useCallback((subName: string) => {
+    setSubBoardFilter((current) => current === subName ? null : subName);
   }, []);
 
   // ============ 悬浮面板定位 ============
@@ -1366,15 +1385,13 @@ export function MarketHeatmap({ locale: initialLocale }: { locale: Locale; messa
     }
     const subBoardTitle = pickFunctions.pickSubBoardTitle(world.x, world.y);
     if (subBoardTitle) {
-      // 双击子板块标题栏：聚焦/取消聚焦到该子板块
-      const subName = subBoardTitle.name;
-      setSubBoardFilter((current) => current === subName ? null : subName);
+      toggleSubBoardFilter(subBoardTitle.name);
       return;
     }
     const stock = pickFunctions.pickStock(world.x, world.y);
     if (!stock) return;
     window.open(`https://xueqiu.com/S/${toXueqiuSymbol(stock.code)}`, "_blank", "noopener,noreferrer");
-  }, [isMobile, pickFunctions, toWorldPoint]);
+  }, [isMobile, pickFunctions, toWorldPoint, toggleSubBoardFilter]);
 
   // ============ 触摸事件 ============
   useEffect(() => {
@@ -1493,8 +1510,7 @@ export function MarketHeatmap({ locale: initialLocale }: { locale: Locale; messa
           const world = toWorldPoint(state.startClientX - bounds.left, state.startClientY - bounds.top);
           const subBoardTitle = pickFunctions.pickSubBoardTitle(world.x, world.y);
           if (subBoardTitle) {
-            const subName = subBoardTitle.name;
-            setSubBoardFilter((current) => current === subName ? null : subName);
+            toggleSubBoardFilter(subBoardTitle.name);
           } else {
             const boardTitle = pickFunctions.pickBoardTitle(world.x, world.y) ?? pickFunctions.pickBoard(world.x, world.y);
             if (boardTitle) {
@@ -1564,7 +1580,7 @@ export function MarketHeatmap({ locale: initialLocale }: { locale: Locale; messa
       canvas.removeEventListener("touchend", onTouchEnd);
       canvas.removeEventListener("touchcancel", onTouchCancel);
     };
-  }, [canvasSize.height, canvasSize.width, pickFunctions, toWorldPoint, touchStateRef]);
+  }, [canvasSize.height, canvasSize.width, pickFunctions, toWorldPoint, toggleSubBoardFilter, touchStateRef]);
 
   // ============ 全屏 ============
   useEffect(() => {
@@ -1748,7 +1764,7 @@ export function MarketHeatmap({ locale: initialLocale }: { locale: Locale; messa
 
             {loading && <HeatmapLoadingOverlay displayMode={displayMode} locale={locale} />}
 
-            {error && !loading && (
+            {error && !loading && !treemapData && (
               <div className="absolute inset-0 z-40 flex items-center justify-center bg-background/80 text-sm text-destructive backdrop-blur-sm">
                 {error}
               </div>
