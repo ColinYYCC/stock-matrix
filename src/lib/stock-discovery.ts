@@ -8,10 +8,12 @@
  * - 新股上市当天自动出现，不依赖 GitHub Actions 或手动跑脚本
  * - 行业分类逻辑与 fetch_stocks.py 完全一致
  * - 静态 JSON 降为兜底，API 失败时仍可用
- * - 模块缓存 TTL 较长（1 小时），新股不会每分钟都上
+ * - 缓存 TTL 按交易时段动态调整：开市 15 分钟、休市 1 小时
+ * - 总数预检：先查 total，没变就跳过全量拉取，降低 API 负载
  */
 import fallbackMarketSnapshot from "@/lib/data/stocks-fallback.json";
 import subboardSnapshot from "@/lib/data/subboards.json";
+import { isTradingHours } from "@/lib/trading-hours";
 import type { ExchangeCode } from "@/types/heatmap";
 
 // ============ 类型定义 ============
@@ -416,7 +418,12 @@ async function fetchClistPage(pageNum: number): Promise<unknown> {
   throw lastError ?? new Error("fetchClistPage failed");
 }
 
-/** 并发拉取全部分页，返回 payloads 和总股票数 */
+/**
+ * 并发拉取全部分页，返回 payloads 和总股票数。
+ *
+ * 注意：discoverStocks() 现在内联了此逻辑以支持总数预检优化。
+ * 此函数保留供外部调用或测试使用。
+ */
 async function fetchAllClistPages(): Promise<{ payloads: unknown[]; total: number }> {
   // 先拉第一页获取总数
   const firstPayload = (await fetchClistPage(1)) as {
@@ -452,18 +459,29 @@ async function fetchAllClistPages(): Promise<{ payloads: unknown[]; total: numbe
 
 // ============ 模块缓存 ============
 
-/** 缓存 TTL：1 小时（新股不会频繁上市，不需要太短） */
-const DISCOVERY_CACHE_MS = 60 * 60 * 1000;
+/** 开市期间缓存 TTL：15 分钟（新股上市后最多 15 分钟出现） */
+const DISCOVERY_CACHE_MS_TRADING = 15 * 60 * 1000;
+/** 休市期间缓存 TTL：1 小时（休市时不会上新股，不需要频繁刷新） */
+const DISCOVERY_CACHE_MS_CLOSED = 60 * 60 * 1000;
+
+/** 根据当前是否为交易时段，返回对应的缓存 TTL */
+function getDiscoveryCacheMs(): number {
+  return isTradingHours() ? DISCOVERY_CACHE_MS_TRADING : DISCOVERY_CACHE_MS_CLOSED;
+}
 
 let discoveryCache: StockSnapshot[] | null = null;
 let discoveryCacheTimestamp = 0;
 let discoveryPromise: Promise<StockSnapshot[]> | null = null;
+
+/** 上次发现的总股票数（用于总数预检，避免无新股时全量拉取） */
+let lastDiscoveryTotal = 0;
 
 /** 测试用：重置缓存 */
 export function __resetDiscoveryCacheForTest(): void {
   discoveryCache = null;
   discoveryCacheTimestamp = 0;
   discoveryPromise = null;
+  lastDiscoveryTotal = 0;
 }
 
 // ============ 主函数：动态发现股票 ============
@@ -472,19 +490,20 @@ export function __resetDiscoveryCacheForTest(): void {
  * 动态发现全 A 股列表
  *
  * 流程：
- * 1. 检查缓存（TTL 1 小时）
- * 2. 从东方财富 clist 接口拉取全 A 股列表
- * 3. 解析 + 行业分类
- * 4. 与静态基线合并
- * 5. 缓存并返回
+ * 1. 检查缓存（开市 15 分钟 / 休市 1 小时）
+ * 2. 先拉第一页获取总数 — 如果总数没变，跳过全量拉取，直接延长缓存
+ * 3. 总数变了 → 全量拉取所有分页
+ * 4. 解析 + 行业分类
+ * 5. 与静态基线合并
+ * 6. 缓存并返回
  *
  * 失败时回退到静态基线（不抛异常）
  */
 export async function discoverStocks(): Promise<StockSnapshot[]> {
   const now = Date.now();
 
-  // 缓存命中
-  if (discoveryCache && now - discoveryCacheTimestamp < DISCOVERY_CACHE_MS) {
+  // 缓存命中（TTL 按交易时段动态调整）
+  if (discoveryCache && now - discoveryCacheTimestamp < getDiscoveryCacheMs()) {
     return discoveryCache;
   }
 
@@ -495,7 +514,40 @@ export async function discoverStocks(): Promise<StockSnapshot[]> {
 
   discoveryPromise = (async () => {
     try {
-      const { payloads, total } = await fetchAllClistPages();
+      // --- 总数预检：先拉第一页，检查 total 是否变化 ---
+      const firstPayload = (await fetchClistPage(1)) as {
+        data?: { total?: number };
+      };
+      const total = firstPayload.data?.total ?? 0;
+      if (total <= 0) {
+        throw new Error(`clist total is invalid: ${total}`);
+      }
+
+      // 总数没变 且 已有缓存 → 跳过全量拉取，延长缓存时间
+      if (lastDiscoveryTotal === total && discoveryCache) {
+        discoveryCacheTimestamp = Date.now();
+        return discoveryCache;
+      }
+
+      // 总数变了（或首次运行）→ 全量拉取所有分页
+      const pageCount = Math.ceil(total / CLIST_PAGE_SIZE);
+      const payloads: unknown[] = [firstPayload];
+
+      if (pageCount > 1) {
+        const remainingPages = Array.from({ length: pageCount - 1 }, (_, i) => i + 2);
+
+        // 分批并发，每批 CLIST_CONCURRENCY 个
+        for (let i = 0; i < remainingPages.length; i += CLIST_CONCURRENCY) {
+          const batch = remainingPages.slice(i, i + CLIST_CONCURRENCY);
+          const results = await Promise.allSettled(batch.map((p) => fetchClistPage(p)));
+          for (const result of results) {
+            if (result.status === "fulfilled") {
+              payloads.push(result.value);
+            }
+          }
+        }
+      }
+
       const discovered = parseClistStocks(payloads);
 
       // 完整性校验：拉到的数量 >= API 声称的总数的 80%
@@ -508,6 +560,7 @@ export async function discoverStocks(): Promise<StockSnapshot[]> {
       const merged = mergeDiscoveredWithBaseline(discovered, baselineStocks);
       discoveryCache = merged;
       discoveryCacheTimestamp = Date.now();
+      lastDiscoveryTotal = total;
       return merged;
     } catch (error) {
       console.warn("Stock discovery failed, falling back to baseline:", error);

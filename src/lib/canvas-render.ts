@@ -482,7 +482,7 @@ export function drawHeatmap(params: DrawHeatmapParams) {
       context.fillStyle = "rgba(247, 250, 252, 0.92)";
       context.textAlign = "left";
       context.textBaseline = "middle";
-      context.font = `700 ${fontSize}px Arial, sans-serif`;
+      context.font = heatmapFont(700, fontSize);
       drawClippedText(context, shortenText(subBoard.name, subBoard.width > 108 ? 8 : 5), subBoard.x + 5, subBoard.y + subBoard.titleHeight / 2 + fontSize * 0.06, subBoard.x + 3, subBoard.y + 1, Math.max(0, subBoard.width - 6), Math.max(0, subBoard.titleHeight - 2));
     }
   }
@@ -511,7 +511,7 @@ export function drawHeatmap(params: DrawHeatmapParams) {
       context.fillStyle = "rgba(247, 250, 252, 0.96)";
       context.textAlign = "left";
       context.textBaseline = "middle";
-      context.font = `700 ${fontSize}px Arial, sans-serif`;
+      context.font = heatmapFont(700, fontSize);
       drawClippedText(context, shortenText(board.name, board.width > 180 ? 12 : 8), board.x + 8, board.y + board.titleHeight / 2 + fontSize * 0.08, board.x + 4, board.y + 2, Math.max(0, board.width - 8), Math.max(0, board.titleHeight - 4));
     }
   }

@@ -7,9 +7,16 @@
  * 1. classifyByIndustry — 申万二级行业 → 大板块映射
  * 2. parseClistStocks — 东方财富 clist 接口响应解析
  * 3. mergeDiscoveredWithBaseline — 动态发现的股票与静态基线合并
- * 4. discoverStocks — 完整流程（含缓存 + 兜底）
+ * 4. discoverStocks — 完整流程（含缓存 + 兜底 + 总数预检）
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+
+// mock trading-hours，默认返回开市
+vi.mock("@/lib/trading-hours", () => ({
+  isTradingHours: vi.fn().mockReturnValue(true),
+  CST_OFFSET_MS: 8 * 60 * 60 * 1000,
+}));
+
 import {
   classifyByIndustry,
   parseClistStocks,
@@ -18,6 +25,7 @@ import {
   __resetDiscoveryCacheForTest,
 } from "@/lib/stock-discovery";
 import type { StockSnapshot } from "@/lib/stock-discovery";
+import { isTradingHours } from "@/lib/trading-hours";
 
 // ============ 辅助函数 ============
 
@@ -298,6 +306,8 @@ describe("discoverStocks", () => {
   beforeEach(() => {
     __resetDiscoveryCacheForTest();
     vi.restoreAllMocks();
+    // 默认 mock 为开市时段（15 分钟 TTL）
+    vi.mocked(isTradingHours).mockReturnValue(true);
   });
 
   afterEach(() => {
@@ -357,5 +367,75 @@ describe("discoverStocks", () => {
 
     await discoverStocks();
     expect(fetchMock.mock.calls.length).toBe(firstCallCount);
+  });
+
+  it("总数预检：total 没变 → 跳过全量拉取，只发 1 个请求", async () => {
+    // 使用小 total（1 页），避免分页拉取
+    const mockPayload = makeClistPayload(
+      [makeClistRow({ code: "600519", name: "贵州茅台", price: 1800.0, marketFlag: 1 })],
+      1,
+    );
+
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => mockPayload,
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    // 第一次调用：全量拉取（单页场景，1 次请求）
+    await discoverStocks();
+    const firstCallCount = fetchMock.mock.calls.length;
+    expect(firstCallCount).toBe(1);
+
+    // 用 vi.spyOn(Date) 让缓存过期
+    const realNow = Date.now;
+    let fakeTime = realNow();
+    vi.spyOn(Date, "now").mockImplementation(() => {
+      return fakeTime;
+    });
+    // 快进 16 分钟（超过 15 分钟 TTL）
+    fakeTime = realNow() + 16 * 60 * 1000;
+
+    // 第二次调用：total 没变，应该只发 1 个请求（预检第一页）
+    await discoverStocks();
+    const secondCallCount = fetchMock.mock.calls.length;
+    expect(secondCallCount).toBe(firstCallCount + 1);
+
+    Date.now = realNow;
+  });
+
+  it("总数预检：total 变了 → 触发全量拉取", async () => {
+    let currentTotal = 1;
+    const fetchMock = vi.fn().mockImplementation(async () => ({
+      ok: true,
+      json: async () => makeClistPayload(
+        [makeClistRow({ code: "600519", name: "贵州茅台", price: 1800.0, marketFlag: 1 })],
+        currentTotal,
+      ),
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    // 第一次调用
+    await discoverStocks();
+    const firstCallCount = fetchMock.mock.calls.length;
+
+    // 用 vi.spyOn(Date) 让缓存过期
+    const realNow = Date.now;
+    let fakeTime = realNow();
+    vi.spyOn(Date, "now").mockImplementation(() => {
+      return fakeTime;
+    });
+    // 快进 16 分钟
+    fakeTime = realNow() + 16 * 60 * 1000;
+
+    // total 增加（模拟新股上市）
+    currentTotal = 2;
+
+    // 第二次调用：total 变了，应该重新拉取
+    await discoverStocks();
+    const secondCallCount = fetchMock.mock.calls.length;
+    expect(secondCallCount).toBeGreaterThan(firstCallCount);
+
+    Date.now = realNow;
   });
 });
