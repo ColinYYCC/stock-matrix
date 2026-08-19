@@ -4,7 +4,7 @@ import { forwardRef, memo } from "react";
 
 import { cn } from "@/lib/utils";
 import { formatPrice, formatChange } from "@/lib/format";
-import { getChangeTextClass } from "@/lib/heatmap-color";
+import { getChangeTextClass, getInspectorHeaderColor } from "@/lib/heatmap-color";
 import { getSparklineUrl, getDailyKlineUrl } from "@/lib/stock-image";
 import type { HeatmapMessages } from "@/lib/i18n";
 import type { PriceColorMode } from "@/types/heatmap";
@@ -62,7 +62,7 @@ const StockListItem = memo(function StockListItem({
   return (
     <div
       className={cn(
-        "grid grid-cols-[minmax(0,1fr)_56px_64px_80px] items-center gap-2 border-b border-slate-300/70 px-3 py-1.5 text-[12.5px]",
+        "grid grid-cols-[minmax(0,1fr)_56px_64px_80px] items-center gap-2 border-b border-slate-300/70 px-3 py-1.5 text-[12px]",
         isActive && "bg-slate-100"
       )}
     >
@@ -83,12 +83,12 @@ const StockListItem = memo(function StockListItem({
         referrerPolicy="no-referrer"
         onError={(event) => { event.currentTarget.style.visibility = "hidden"; }}
       />
-      <span className="text-right text-[11.5px] font-medium tabular-nums text-slate-700">
+      <span className="text-right text-[11px] font-medium tabular-nums text-slate-700">
         {formatPrice(price)}
       </span>
       <span
         className={cn(
-          "text-right text-[11.5px] font-medium tabular-nums",
+          "text-right text-[11px] font-medium tabular-nums",
           getChangeTextClass(changePct, priceColorMode, "strong")
         )}
       >
@@ -115,7 +115,7 @@ export const Inspector = forwardRef<HTMLDivElement, InspectorProps>(function Ins
 
   return (
     <aside
-      className="pointer-events-none absolute z-30 overflow-hidden rounded-none border border-slate-700/80 bg-[#0f1319] text-slate-100 shadow-[0_22px_72px_rgba(0,0,0,0.36)]"
+      className="pointer-events-none absolute z-30 overflow-hidden rounded-lg border border-slate-700/80 bg-[#0f1319] text-slate-100 shadow-[0_22px_72px_rgba(0,0,0,0.36)]"
       style={{
         left: style.left,
         top: style.top,
@@ -126,14 +126,14 @@ export const Inspector = forwardRef<HTMLDivElement, InspectorProps>(function Ins
     >
       {stock && (
         <>
-          {/* 个股信息头部 */}
-          <div className="border-b border-slate-700/80 bg-[#356e57] px-3 py-2.5">
+          {/* 个股信息头部：背景色跟随涨跌色模式 */}
+          <div className="border-b border-slate-700/80 px-3 py-2.5" style={{ backgroundColor: getInspectorHeaderColor(priceColorMode) }}>
             <p className="text-[13px] font-semibold tracking-[0.02em] text-slate-100">
               {title ?? ""}
             </p>
             <div className="mt-2.5 grid grid-cols-[minmax(0,1fr)_94px] items-end gap-3">
               <div className="min-w-0">
-                <p className="text-[18px] font-semibold leading-[1.08] text-white [word-break:keep-all]">
+                <p className="text-[19px] font-bold leading-[1.08] text-white [word-break:keep-all]">
                   {stock.name}
                 </p>
                 <img
@@ -147,12 +147,12 @@ export const Inspector = forwardRef<HTMLDivElement, InspectorProps>(function Ins
                 />
               </div>
               <div className="text-right">
-                <p className="text-[17px] font-semibold tabular-nums text-white">
+                <p className="text-[15px] font-medium tabular-nums text-white/90">
                   {formatPrice(stock.price)}
                 </p>
                 <p
                   className={cn(
-                    "mt-0.5 text-[16px] font-semibold tabular-nums",
+                    "mt-0.5 text-[14px] font-semibold tabular-nums",
                     getChangeTextClass(stock.changePct, priceColorMode, "soft")
                   )}
                 >

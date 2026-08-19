@@ -127,7 +127,7 @@ export function ColorLegend({
             disabled={sharePending}
             aria-label={sharePending ? messages.generatingShareImage : messages.shareToApps}
             title={messages.shareImage}
-            className="inline-flex items-center gap-1 rounded-[14px] bg-brand px-1.5 py-1 text-[10px] font-semibold text-brand-foreground shadow-[0_2px_8px_color-mix(in_srgb,var(--brand)_38%,transparent)] transition-all hover:bg-brand/90 disabled:opacity-60 sm:px-2 sm:text-[11px]"
+            className="inline-flex items-center gap-1 rounded-lg bg-brand px-2 py-1 text-[10px] font-semibold text-brand-foreground shadow-[0_2px_8px_color-mix(in_srgb,var(--brand)_38%,transparent)] transition-all hover:bg-brand/90 disabled:opacity-60 sm:px-2.5 sm:text-[11px]"
           >
             <Share2 className="size-3" />
             <span className="hidden sm:inline">

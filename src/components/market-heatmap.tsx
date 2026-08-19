@@ -17,6 +17,7 @@ import {
   X,
   ExternalLink,
   Info,
+  PanelLeftOpen,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -1702,14 +1703,14 @@ export function MarketHeatmap({ locale: initialLocale }: { locale: Locale; messa
           className={cn(
             "relative min-h-0 overflow-hidden",
             isIOS26 && !isFullscreen ? "rounded-3xl border border-[var(--ios26-glass-border)]" : "",
-            isIOS26 ? "" : isLightMode ? "bg-[#e9eef5]" : "bg-[#10141b]",
+            isIOS26 ? "" : isLightMode ? "bg-gradient-to-br from-slate-100 to-slate-200" : "bg-gradient-to-br from-[#1a1722] to-[#0f0d16]",
             isFullscreen ? "col-start-1 h-full" : "col-start-1 row-start-1 md:col-start-2"
           )}
-          style={isIOS26 ? { background: "var(--ios26-canvas-bg)" } : undefined}
+          style={isIOS26 ? { background: "linear-gradient(135deg, var(--ios26-bg-start), var(--ios26-bg-end)), var(--ios26-blobs)" } : undefined}
         >
           <div
             ref={viewportRef}
-            className={cn("relative h-full min-h-0 overflow-hidden", isIOS26 ? "" : isLightMode ? "bg-[#e9eef5]" : "bg-[#10141b]")}
+            className={cn("relative h-full min-h-0 overflow-hidden", isIOS26 ? "" : isLightMode ? "bg-gradient-to-br from-slate-100 to-slate-200" : "bg-gradient-to-br from-[#1a1722] to-[#0f0d16]")}
           >
             {isFullscreen && isMobile && (
               <button
@@ -1735,7 +1736,7 @@ export function MarketHeatmap({ locale: initialLocale }: { locale: Locale; messa
                   isIOS26 ? "ios26-glass-float text-white" : "border border-slate-500/70 bg-black/50 text-white shadow-[0_10px_24px_rgba(0,0,0,0.35)] backdrop-blur-sm hover:bg-black/70"
                 )}
               >
-                <span className="text-lg">☰</span>
+                <PanelLeftOpen className="size-5" />
               </button>
             )}
 

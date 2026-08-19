@@ -144,3 +144,11 @@ export function getRiseTextClass(colorMode: PriceColorMode): string {
 export function getFallTextClass(colorMode: PriceColorMode): string {
   return colorMode === "red-rise" ? "text-emerald-400" : "text-red-400";
 }
+
+/**
+ * Inspector 面板头部背景色：跟随涨跌色模式动态变化
+ * red-rise 模式用红色调头部，green-rise 模式用绿色调头部
+ */
+export function getInspectorHeaderColor(colorMode: PriceColorMode): string {
+  return colorMode === "red-rise" ? "#7a2e35" : "#356e57";
+}

@@ -461,7 +461,7 @@ export function Sidebar({
           <Button
             variant="outline"
             size="sm"
-            className="justify-start rounded-none border-border bg-background/80 text-foreground hover:bg-muted"
+            className="justify-start rounded-lg border-border bg-background/80 text-foreground hover:bg-muted"
             onClick={onResetView}
           >
             <RotateCcw className="mr-2 size-4" />
@@ -470,7 +470,7 @@ export function Sidebar({
           <Button
             variant="outline"
             size="sm"
-            className="justify-start rounded-none border-border bg-background/80 text-foreground hover:bg-muted"
+            className="justify-start rounded-lg border-border bg-background/80 text-foreground hover:bg-muted"
             onClick={onToggleFullscreen}
           >
             <Maximize2 className="mr-2 size-4" />
@@ -479,7 +479,7 @@ export function Sidebar({
           <Button
             variant="outline"
             size="sm"
-            className="justify-start rounded-none border-border bg-background/80 text-foreground hover:bg-muted"
+            className="justify-start rounded-lg border-border bg-background/80 text-foreground hover:bg-muted"
             onClick={onOpenSettings}
           >
             <Settings2 className="mr-2 size-4" />
