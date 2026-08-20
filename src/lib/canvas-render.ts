@@ -279,9 +279,9 @@ export function fitFontSizeToWidth(
  * 绘制单只股票的文字标签
  *
  * 参考原作者 wenyuanw/a-share-heatmap 的简洁设计，分 4 级显示：
- * - Large: 宽>=108 高>=58 → 居中显示 股票名 + 涨跌幅（+ 价格，当垂直空间足够时）
- * - Medium: 宽>=50 高>=28 → 全部居中显示 股票名 + 涨跌幅（+ 价格，宽>=72 高>=58时）
- * - Small: 宽>=28 高>=16 → 仅显示股票名，居中
+ * - Large: 宽>=108 高>=58 → 居中显示 股票名 + 涨跌幅 + 价格（三行，空间不够时两行）
+ * - Medium: 宽>=50 高>=28 → 居中显示 股票名 + 涨跌幅（+ 价格，宽>=58 高>=42时）
+ * - Small: 宽>=28 高>=16 → 居中显示 股票名（+ 涨跌幅，宽>=34 高>=22时）
  * - Micro: 宽>=14 高>=8 → 仅显示股票名（截断到 1-2 字），居中
  * - 更小 → 不绘制文字
  *
@@ -335,7 +335,7 @@ export function drawStockLabel(context: CanvasRenderingContext2D, stock: StockRe
         clamp(Math.floor(Math.min(displayWidth, displayHeight) * 0.19), 11, 23) * screenUnit,
         titleSize * 1.08
       );
-      const priceSize = Math.min(detailSize * 0.82, 10 * screenUnit);
+      const priceSize = Math.min(detailSize * 0.88, 14 * screenUnit);
       const centerX = stock.x + stock.width / 2;
       const centerY = stock.y + stock.height / 2;
       const lineGap = 2 * screenUnit;
@@ -343,11 +343,11 @@ export function drawStockLabel(context: CanvasRenderingContext2D, stock: StockRe
       context.textAlign = "center";
       context.textBaseline = "middle";
 
-      // #9: 动态判断是否有足够垂直空间显示第三行（价格）
-      const hasPriceLine = displayHeight >= titleSize + detailSize * 2 + lineGap * 2 + 4 * screenUnit;
+      // 修复：用 detailSize + priceSize 而非 detailSize * 2，降低价格行显示门槛
+      const hasPriceLine = displayHeight >= titleSize + detailSize + priceSize + lineGap * 2 + 4 * screenUnit;
 
       if (hasPriceLine) {
-        // #1: 三行对称居中
+        // 三行对称居中：名称 + 涨跌幅 + 价格
         const totalHeight = titleSize + lineGap + detailSize + lineGap + priceSize;
         const titleY = centerY - totalHeight / 2 + titleSize / 2;
         const detailY = titleY + titleSize / 2 + lineGap + detailSize / 2;
@@ -359,10 +359,10 @@ export function drawStockLabel(context: CanvasRenderingContext2D, stock: StockRe
         context.font = heatmapFont(600, detailSize);
         drawClippedText(context, formatCompactChange(stock.changePct), centerX, detailY, stock.x + clipPadding, stock.y + clipPadding, clipWidth, clipHeight);
 
-        context.font = heatmapFont(400, priceSize);
+        context.font = heatmapFont(600, priceSize);
         drawClippedText(context, formatPrice(stock.price), centerX, priceY, stock.x + clipPadding, stock.y + clipPadding, clipWidth, clipHeight);
       } else {
-        // #1: 两行对称居中
+        // 两行对称居中：名称 + 涨跌幅
         const totalHeight = titleSize + lineGap + detailSize;
         const titleY = centerY - totalHeight / 2 + titleSize / 2;
         const detailY = titleY + titleSize / 2 + lineGap + detailSize / 2;
@@ -383,18 +383,19 @@ export function drawStockLabel(context: CanvasRenderingContext2D, stock: StockRe
       const detailSize = Math.min(clamp(Math.floor(displayHeight * 0.30), 7, 12) * screenUnit, titleSize * 1.05);
       const centerX = stock.x + stock.width / 2;
       const centerY = stock.y + stock.height / 2;
-      const mediumLineGap = 2.5 * screenUnit;
+      const mediumLineGap = 2 * screenUnit;
 
       context.textAlign = "center";
       context.textBaseline = "middle";
 
-      // 判断是否够放两行（名称 + 涨跌幅）
-      const hasDetail = displayWidth >= 60 && displayHeight >= 40;
-      // 判断是否够放三行（名称 + 涨跌幅 + 价格）
-      const hasPrice = displayWidth >= 72 && displayHeight >= 58;
+      // 降低门槛：更小的色块也显示涨跌幅
+      const hasDetail = displayWidth >= 50 && displayHeight >= 28;
+      // 降低门槛：更小的色块也显示价格
+      const hasPrice = displayWidth >= 58 && displayHeight >= 42;
 
       if (hasPrice) {
-        const priceSize = Math.min(detailSize * 0.82, 10 * screenUnit);
+        // 三行：名称 + 涨跌幅 + 价格
+        const priceSize = Math.min(detailSize * 0.88, 12 * screenUnit);
         const totalHeight = titleSize + mediumLineGap + detailSize + mediumLineGap + priceSize;
         const titleY = centerY - totalHeight / 2 + titleSize / 2;
         const detailY = titleY + titleSize / 2 + mediumLineGap + detailSize / 2;
@@ -406,10 +407,10 @@ export function drawStockLabel(context: CanvasRenderingContext2D, stock: StockRe
         context.font = heatmapFont(600, detailSize);
         drawClippedText(context, formatCompactChange(stock.changePct), centerX, detailY, stock.x + clipPadding, stock.y + clipPadding, clipWidth, clipHeight);
 
-        context.font = heatmapFont(400, priceSize);
+        context.font = heatmapFont(600, priceSize);
         drawClippedText(context, formatPrice(stock.price), centerX, priceY, stock.x + clipPadding, stock.y + clipPadding, clipWidth, clipHeight);
       } else if (hasDetail) {
-        // 两行居中
+        // 两行：名称 + 涨跌幅
         const totalHeight = titleSize + mediumLineGap + detailSize;
         const titleY = centerY - totalHeight / 2 + titleSize / 2;
         const detailY = titleY + titleSize / 2 + mediumLineGap + detailSize / 2;
@@ -420,7 +421,7 @@ export function drawStockLabel(context: CanvasRenderingContext2D, stock: StockRe
         context.font = heatmapFont(600, detailSize);
         drawClippedText(context, formatCompactChange(stock.changePct), centerX, detailY, stock.x + clipPadding, stock.y + clipPadding, clipWidth, clipHeight);
       } else {
-        // 只有一行，居中
+        // 只有一行名称，居中
         context.font = heatmapFont(700, titleSize);
         const fittedName = fitTextToWidth(context, stock.name, clipWidth);
         if (fittedName) {
@@ -431,17 +432,38 @@ export function drawStockLabel(context: CanvasRenderingContext2D, stock: StockRe
     }
 
     if (hasSmallLabel) {
-      // Small: 仅名称，居中，字号 7-9.5px
+      // Small: 名称居中，空间够时显示涨跌幅
       const fontSize = clamp(Math.floor(Math.min(displayHeight * 0.55, displayWidth * 0.14, 9.5)), 7, 9.5) * screenUnit;
       const centerX = stock.x + stock.width / 2;
       const centerY = stock.y + stock.height / 2;
+      const smallLineGap = 1.5 * screenUnit;
 
       context.textAlign = "center";
       context.textBaseline = "middle";
-      context.font = heatmapFont(600, fontSize);
-      const fittedName = fitTextToWidth(context, stock.name, clipWidth);
-      if (fittedName) {
-        drawClippedText(context, fittedName, centerX, centerY, stock.x + clipPadding, stock.y + clipPadding, clipWidth, clipHeight);
+
+      // 空间够时显示两行：名称 + 涨跌幅
+      const hasDetail = displayWidth >= 34 && displayHeight >= 22;
+      if (hasDetail) {
+        const detailSize = Math.min(clamp(Math.floor(displayHeight * 0.28), 6, 8) * screenUnit, fontSize * 0.85);
+        const totalHeight = fontSize + smallLineGap + detailSize;
+        const titleY = centerY - totalHeight / 2 + fontSize / 2;
+        const detailY = titleY + fontSize / 2 + smallLineGap + detailSize / 2;
+
+        context.font = heatmapFont(600, fontSize);
+        const fittedName = fitTextToWidth(context, stock.name, clipWidth);
+        if (fittedName) {
+          drawClippedText(context, fittedName, centerX, titleY, stock.x + clipPadding, stock.y + clipPadding, clipWidth, clipHeight);
+        }
+
+        context.font = heatmapFont(600, detailSize);
+        drawClippedText(context, formatCompactChange(stock.changePct), centerX, detailY, stock.x + clipPadding, stock.y + clipPadding, clipWidth, clipHeight);
+      } else {
+        // 只有一行名称
+        context.font = heatmapFont(600, fontSize);
+        const fittedName = fitTextToWidth(context, stock.name, clipWidth);
+        if (fittedName) {
+          drawClippedText(context, fittedName, centerX, centerY, stock.x + clipPadding, stock.y + clipPadding, clipWidth, clipHeight);
+        }
       }
       return;
     }
