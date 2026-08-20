@@ -45,3 +45,4 @@ graphify-out/
 PixPin_*.png
 *-mockup.html
 gen-mockup.py
+*.png
