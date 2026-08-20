@@ -278,10 +278,11 @@ export function fitFontSizeToWidth(
 /**
  * 绘制单只股票的文字标签
  *
- * 参考原作者 wenyuanw/a-share-heatmap 的简洁设计，分 3 级显示：
+ * 参考原作者 wenyuanw/a-share-heatmap 的简洁设计，分 4 级显示：
  * - Large: 宽>=108 高>=58 → 居中显示 股票名 + 涨跌幅（+ 价格，当垂直空间足够时）
  * - Medium: 宽>=50 高>=28 → 全部居中显示 股票名 + 涨跌幅（+ 价格，宽>=72 高>=58时）
- * - Small: 宽>=22 高>=12 → 仅显示股票名，居中
+ * - Small: 宽>=28 高>=16 → 仅显示股票名，居中
+ * - Micro: 宽>=14 高>=8 → 仅显示股票名（截断到 1-2 字），居中
  * - 更小 → 不绘制文字
  *
  * 排版规则：
@@ -309,7 +310,8 @@ export function drawStockLabel(context: CanvasRenderingContext2D, stock: StockRe
 
   const hasLargeLabel = displayWidth >= 108 && displayHeight >= 58;
   const hasMediumLabel = displayWidth >= 50 && displayHeight >= 28;
-  const hasSmallLabel = displayWidth >= 22 && displayHeight >= 12;
+  const hasSmallLabel = displayWidth >= 28 && displayHeight >= 16;
+  const hasMicroLabel = displayWidth >= 14 && displayHeight >= 8;
 
   context.save();
   try {
@@ -429,13 +431,27 @@ export function drawStockLabel(context: CanvasRenderingContext2D, stock: StockRe
     }
 
     if (hasSmallLabel) {
-      // Small: 门槛降低到 22x12，让更多色块有名字
-      // 字号综合考虑高度和宽度，避免窄色块字号过大
+      // Small: 仅名称，居中，字号 7-9.5px
       const fontSize = clamp(Math.floor(Math.min(displayHeight * 0.55, displayWidth * 0.14, 9.5)), 7, 9.5) * screenUnit;
       const centerX = stock.x + stock.width / 2;
       const centerY = stock.y + stock.height / 2;
 
-      // 全部居中
+      context.textAlign = "center";
+      context.textBaseline = "middle";
+      context.font = heatmapFont(600, fontSize);
+      const fittedName = fitTextToWidth(context, stock.name, clipWidth);
+      if (fittedName) {
+        drawClippedText(context, fittedName, centerX, centerY, stock.x + clipPadding, stock.y + clipPadding, clipWidth, clipHeight);
+      }
+      return;
+    }
+
+    if (hasMicroLabel) {
+      // Micro: 仅名称首字，居中，字号 5-7px（尽可能让更多色块有名字）
+      const fontSize = clamp(Math.floor(Math.min(displayHeight * 0.6, displayWidth * 0.16, 7)), 5, 7) * screenUnit;
+      const centerX = stock.x + stock.width / 2;
+      const centerY = stock.y + stock.height / 2;
+
       context.textAlign = "center";
       context.textBaseline = "middle";
       context.font = heatmapFont(600, fontSize);
