@@ -138,7 +138,7 @@ function HeatmapLoadingOverlay({ displayMode, locale }: { displayMode: DisplayMo
       aria-live="polite"
       aria-busy="true"
       className={cn(
-        "absolute inset-0 z-40 flex flex-col items-center justify-center gap-4 backdrop-blur-[10px]",
+        "absolute inset-0 z-overlay flex flex-col items-center justify-center gap-4 backdrop-blur-[10px]",
         isLightMode ? "bg-slate-50/92" : "bg-[#0a0d12]/92"
       )}
     >
@@ -370,7 +370,10 @@ export function MarketHeatmap({ locale }: { locale: Locale }) {
 
   // ============ 加载 treemap 数据 ============
   // 首次加载带重试：Serverless 冷启动时第一次请求可能失败，重试 2 次后仍失败才报错
+  // 审查问题1：以 urlReady 为门闩，等 URL 状态恢复完成后再发首次请求，
+  // 避免带参分享链接冷启动时先用默认 all/day 白拉一至两次
   useEffect(() => {
+    if (!urlReady) return;
     let cancelled = false;
     async function loadTreemap() {
       setLoading(true);
@@ -407,7 +410,7 @@ export function MarketHeatmap({ locale }: { locale: Locale }) {
     }
     loadTreemap();
     return () => { cancelled = true; };
-  }, [fetchTreemap, market, messages.errorLoad, period]);
+  }, [fetchTreemap, market, messages.errorLoad, period, urlReady]);
 
   // ============ 交易时段判断 ============
   const isTrading = useTradingHours();
@@ -420,6 +423,8 @@ export function MarketHeatmap({ locale }: { locale: Locale }) {
   // 原 quotes 通道已删除，从根上消除"两个数据源不一致导致价格跳变"的问题。
   usePollWhileVisible(
     useCallback(async () => {
+      // 审查问题1：URL 恢复完成前不发起轮询，避免用默认参数发请求
+      if (!urlReady) return;
       try {
         // 静默刷新 treemapData，不触发 loading 状态和重置选中状态
         const response = await fetch(`/api/heatmap/treemap?market=${market}&period=${period}`);
@@ -434,14 +439,16 @@ export function MarketHeatmap({ locale }: { locale: Locale }) {
       } catch (error) {
         console.warn("treemap 轮询失败，保留现有数据:", error);
       }
-    }, [market, period]),
+    }, [market, period, urlReady]),
     pollInterval,
   );
 
   usePollWhileVisible(
     useCallback(async () => {
+      // 审查问题1：URL 恢复完成前不发起轮询
+      if (!urlReady) return;
       try { await fetchMarketSummaries(period); if (treemapDataRef.current) setError(null); } catch (error) { console.warn("概览轮询失败，保留现有数据:", error); }
-    }, [fetchMarketSummaries, period]),
+    }, [fetchMarketSummaries, period, urlReady]),
     pollInterval,
   );
 
@@ -1275,7 +1282,7 @@ export function MarketHeatmap({ locale }: { locale: Locale }) {
       className={cn(
         "relative min-h-0",
         isIOS26 ? "" : "bg-background",
-        isFullscreen ? "fixed inset-0 z-[9999]" : "flex min-h-0 flex-1 flex-col"
+        isFullscreen ? "fixed inset-0 z-fullscreen" : "flex min-h-0 flex-1 flex-col"
       )}
     >
       <div
@@ -1336,7 +1343,7 @@ export function MarketHeatmap({ locale }: { locale: Locale }) {
                 type="button"
                 onClick={() => setIsFullscreen(false)}
                 className={cn(
-                  "absolute right-3 top-3 z-50 inline-flex size-11 items-center justify-center rounded-full transition-colors",
+                  "absolute right-3 top-3 z-panel inline-flex size-11 items-center justify-center rounded-full transition-colors",
                   isIOS26 ? "ios26-glass-float text-white" : "border border-slate-500/70 bg-black/50 text-white shadow-[0_10px_24px_rgba(0,0,0,0.28)] backdrop-blur-sm hover:bg-black/70"
                 )}
                 aria-label={messages.exitFullscreen}
@@ -1351,7 +1358,7 @@ export function MarketHeatmap({ locale }: { locale: Locale }) {
                 onClick={() => setSidebarOpen(true)}
                 aria-label={messages.expandSidebar}
                 className={cn(
-                  "absolute bottom-3 left-3 z-30 inline-flex size-11 items-center justify-center rounded-full transition-colors md:hidden",
+                  "absolute bottom-3 left-3 z-inspector inline-flex size-11 items-center justify-center rounded-full transition-colors md:hidden",
                   isIOS26 ? "ios26-glass-float text-white" : "border border-slate-500/70 bg-black/50 text-white shadow-[0_10px_24px_rgba(0,0,0,0.35)] backdrop-blur-sm hover:bg-black/70"
                 )}
               >
@@ -1390,7 +1397,7 @@ export function MarketHeatmap({ locale }: { locale: Locale }) {
             {loading && <HeatmapLoadingOverlay displayMode={displayMode} locale={locale} />}
 
             {error && !loading && !treemapData && (
-              <div className="absolute inset-0 z-40 flex items-center justify-center bg-background/80 text-sm text-destructive backdrop-blur-sm">
+              <div className="absolute inset-0 z-overlay flex items-center justify-center bg-background/80 text-sm text-destructive backdrop-blur-sm">
                 {error}
               </div>
             )}

@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect } from "react";
 import { Maximize2, RotateCcw, Settings2, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -138,6 +139,16 @@ export function Sidebar({
   onOpenSettings,
   onCloseSidebar,
 }: SidebarProps) {
+  // 移动端抽屉打开时，按 Esc 关闭（桌面端常驻，不绑定）
+  useEffect(() => {
+    if (!sidebarOpen) return;
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") onCloseSidebar();
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [sidebarOpen, onCloseSidebar]);
+
   if (isFullscreen) return null;
 
   const skin = skins[designStyle].sidebar;
@@ -176,7 +187,7 @@ export function Sidebar({
           "row-start-1 flex min-h-0 min-w-0 flex-col text-card-foreground",
           skin.asideSurface,
           // 移动端：从左边滑入的抽屉
-          "fixed inset-y-0 left-0 z-50 w-[280px] transform transition-transform duration-300 motion-reduce:transition-none",
+          "fixed inset-y-0 left-0 z-panel w-[280px] transform transition-transform duration-300 motion-reduce:transition-none",
           sidebarOpen ? "translate-x-0" : "-translate-x-full",
           // 桌面端：固定在网格里
           "md:static md:z-auto md:row-span-2 md:w-auto md:translate-x-0 md:transition-none",

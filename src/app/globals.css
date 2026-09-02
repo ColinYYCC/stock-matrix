@@ -25,6 +25,14 @@
   --color-brand-foreground: var(--brand-foreground);
   --font-sans: Arial, "PingFang SC", "Microsoft YaHei", sans-serif;
   --font-mono: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+
+  /* 语义化 z-index 层级（替代散落的魔法数字，见设计审查 P1） */
+  --z-inspector: 30;
+  --z-overlay: 40;
+  --z-panel: 50;
+  --z-sheet: 9998;
+  --z-fullscreen: 9999;
+  --z-modal: 10010;
 }
 
 :root {

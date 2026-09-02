@@ -9,6 +9,7 @@ import {
   Info,
 } from "lucide-react";
 
+import { useEffect } from "react";
 import { cn } from "@/lib/utils";
 import type { HeatmapMessages } from "@/lib/i18n";
 import type { DisplayMode, PriceColorMode } from "@/types/heatmap";
@@ -49,6 +50,16 @@ export function SettingsDrawer({
   onPriceColorModeChange,
   onDesignStyleChange,
 }: SettingsDrawerProps) {
+  // 打开时按 Esc 关闭面板
+  useEffect(() => {
+    if (!open) return;
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") onClose();
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [open, onClose]);
+
   if (!open) return null;
 
   const skin = skins[designStyle].settingsDrawer;

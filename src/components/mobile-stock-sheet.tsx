@@ -55,7 +55,7 @@ export function MobileStockSheet({
   const skin = skins[designStyle].mobileStockSheet;
 
   return (
-    <div className="fixed inset-0 z-[9998] flex flex-col justify-end" role="dialog" aria-modal="true">
+    <div className="fixed inset-0 z-sheet flex flex-col justify-end" role="dialog" aria-modal="true">
       {/* 点击遮罩层关闭面板 */}
       <button type="button" aria-label={messages.closeSheet} onClick={onClose} className={skin.overlay} />
       <div className={skin.panel}>
@@ -101,7 +101,7 @@ export function MobileStockSheet({
               <img
                 src={getDailyKlineUrl(stock.code)}
                 alt={`${stock.name} K-line`}
-                className="h-auto w-full object-contain"
+                className="aspect-[2/1] w-full object-contain"
                 loading="lazy"
                 decoding="async"
                 referrerPolicy="no-referrer"

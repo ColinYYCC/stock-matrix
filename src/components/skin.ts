@@ -118,9 +118,9 @@ export const skins: Record<DesignStyle, Skin> = {
       githubLinkDark:
         "inline-flex size-11 shrink-0 items-center justify-center bg-transparent transition-colors hover:text-brand focus-visible:text-brand md:size-7 text-slate-400 hover:bg-white/5 focus-visible:bg-white/5",
       tooltipLight:
-        "pointer-events-none absolute bottom-full left-0 z-40 mb-2 w-64 border border-border bg-popover/96 p-2 text-[11px] leading-5 text-popover-foreground opacity-0 shadow-[0_18px_48px_rgba(0,0,0,0.35)] backdrop-blur-sm transition-opacity group-hover:opacity-100 group-focus-within:opacity-100",
+        "pointer-events-none absolute bottom-full left-0 z-overlay mb-2 w-64 border border-border bg-popover/96 p-2 text-[11px] leading-5 text-popover-foreground opacity-0 shadow-[0_18px_48px_rgba(0,0,0,0.35)] backdrop-blur-sm transition-opacity group-hover:opacity-100 group-focus-within:opacity-100",
       tooltipDark:
-        "pointer-events-none absolute bottom-full left-0 z-40 mb-2 w-64 border border-slate-700/90 bg-[#0f1319]/96 p-2 text-[11px] leading-5 text-slate-300 opacity-0 shadow-[0_18px_48px_rgba(0,0,0,0.35)] backdrop-blur-sm transition-opacity group-hover:opacity-100 group-focus-within:opacity-100",
+        "pointer-events-none absolute bottom-full left-0 z-overlay mb-2 w-64 border border-slate-700/90 bg-[#0f1319]/96 p-2 text-[11px] leading-5 text-slate-300 opacity-0 shadow-[0_18px_48px_rgba(0,0,0,0.35)] backdrop-blur-sm transition-opacity group-hover:opacity-100 group-focus-within:opacity-100",
       shareButton:
         "inline-flex min-h-11 items-center gap-1 rounded-lg bg-brand px-2 py-1 text-[10px] font-semibold text-brand-foreground shadow-[0_2px_8px_color-mix(in_srgb,var(--brand)_38%,transparent)] transition-colors hover:bg-brand/90 disabled:opacity-60 sm:min-h-0 sm:px-2.5 sm:text-[11px]",
     },
@@ -140,7 +140,7 @@ export const skins: Record<DesignStyle, Skin> = {
       listRowInactive: "hover:bg-slate-800/40",
     },
     settingsDrawer: {
-      overlay: "absolute inset-0 z-[10010] flex items-end justify-center bg-black/62 backdrop-blur-sm",
+      overlay: "absolute inset-0 z-modal flex items-end justify-center bg-black/62 backdrop-blur-sm",
       panel:
         "relative flex h-[82dvh] w-full flex-col overflow-hidden rounded-t-lg border border-b-0 border-border bg-card pb-[env(safe-area-inset-bottom)] text-card-foreground shadow-[0_-24px_100px_rgba(0,0,0,0.48)]",
       header: "flex items-start justify-between gap-3 border-b border-border px-4 py-3",
@@ -167,12 +167,12 @@ export const skins: Record<DesignStyle, Skin> = {
     },
     inspector: {
       panel:
-        "pointer-events-none absolute z-30 overflow-hidden rounded-lg border border-slate-700/80 bg-[#0f1319] text-slate-100 shadow-[0_22px_72px_rgba(0,0,0,0.36)]",
+        "pointer-events-none absolute z-inspector overflow-hidden rounded-lg border border-slate-700/80 bg-[#0f1319] text-slate-100 shadow-[0_22px_72px_rgba(0,0,0,0.36)]",
       header: "border-b border-slate-700/80 px-3 py-2.5",
       klineFrame: "border-b border-slate-700/80 bg-white p-1.5",
     },
     sidebar: {
-      overlay: "fixed inset-0 z-40 bg-black/60 backdrop-blur-sm md:hidden",
+      overlay: "fixed inset-0 z-overlay bg-black/60 backdrop-blur-sm md:hidden",
       asideSurface: "border-r border-border bg-card/95",
       asideDesktopExtra: "md:shadow-none",
       header: "flex items-center justify-between gap-2 border-b border-border px-2 py-1.5 sm:px-2.5",
@@ -223,9 +223,9 @@ export const skins: Record<DesignStyle, Skin> = {
       githubLinkDark:
         "ios26-glass-hover inline-flex size-11 shrink-0 items-center justify-center rounded-full bg-transparent transition-colors hover:text-brand focus-visible:text-brand md:size-7 text-muted-foreground",
       tooltipLight:
-        "ios26-glass pointer-events-none absolute bottom-full left-0 z-40 mb-2 w-64 rounded-2xl p-2 text-[11px] leading-5 text-card-foreground opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100",
+        "ios26-glass pointer-events-none absolute bottom-full left-0 z-overlay mb-2 w-64 rounded-2xl p-2 text-[11px] leading-5 text-card-foreground opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100",
       tooltipDark:
-        "ios26-glass pointer-events-none absolute bottom-full left-0 z-40 mb-2 w-64 rounded-2xl p-2 text-[11px] leading-5 text-card-foreground opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100",
+        "ios26-glass pointer-events-none absolute bottom-full left-0 z-overlay mb-2 w-64 rounded-2xl p-2 text-[11px] leading-5 text-card-foreground opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100",
       shareButton:
         "inline-flex min-h-11 items-center gap-1 rounded-[14px] bg-brand px-1.5 py-1 text-[10px] font-semibold text-brand-foreground shadow-[0_2px_8px_color-mix(in_srgb,var(--brand)_38%,transparent)] transition-colors hover:bg-brand/90 disabled:opacity-60 sm:min-h-0 sm:px-2 sm:text-[11px]",
     },
@@ -245,7 +245,7 @@ export const skins: Record<DesignStyle, Skin> = {
       listRowInactive: "",
     },
     settingsDrawer: {
-      overlay: "absolute inset-0 z-[10010] flex items-end justify-center bg-black/40 backdrop-blur-sm",
+      overlay: "absolute inset-0 z-modal flex items-end justify-center bg-black/40 backdrop-blur-sm",
       panel:
         "ios26-glass relative flex h-[82dvh] w-full flex-col overflow-hidden rounded-t-3xl pb-[env(safe-area-inset-bottom)] text-card-foreground",
       header: "flex items-start justify-between gap-3 border-b border-[var(--ios26-glass-border)] px-4 py-3",
@@ -270,12 +270,12 @@ export const skins: Record<DesignStyle, Skin> = {
     },
     inspector: {
       panel:
-        "pointer-events-none absolute z-30 overflow-hidden rounded-3xl border border-[var(--ios26-glass-border)] bg-[#0f1319] text-slate-100 shadow-[0_22px_72px_rgba(0,0,0,0.36)]",
+        "pointer-events-none absolute z-inspector overflow-hidden rounded-3xl border border-[var(--ios26-glass-border)] bg-[#0f1319] text-slate-100 shadow-[0_22px_72px_rgba(0,0,0,0.36)]",
       header: "px-3 py-2.5",
       klineFrame: "border-b border-[var(--ios26-glass-border)] bg-white p-1.5",
     },
     sidebar: {
-      overlay: "fixed inset-0 z-40 bg-black/40 backdrop-blur-sm md:hidden",
+      overlay: "fixed inset-0 z-overlay bg-black/40 backdrop-blur-sm md:hidden",
       asideSurface: "ios26-glass",
       asideDesktopExtra: "md:rounded-3xl",
       header: "flex items-center justify-between gap-2 px-2 py-2 sm:px-2.5",

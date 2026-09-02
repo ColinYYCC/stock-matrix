@@ -164,7 +164,7 @@ export const Inspector = forwardRef<HTMLDivElement, InspectorProps>(function Ins
             <img
               src={getDailyKlineUrl(stock.code)}
               alt={`${stock.name} K-line`}
-              className="h-auto w-full bg-white object-contain"
+              className="aspect-[2/1] w-full bg-white object-contain"
               loading="lazy"
               decoding="async"
               referrerPolicy="no-referrer"
