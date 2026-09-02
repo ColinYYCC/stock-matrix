@@ -120,6 +120,17 @@
     @apply border-border outline-ring/50;
   }
 
+  /* 键盘焦点统一可见：所有按钮/链接/下拉在键盘导航时出现同一套 outline。
+     用 :focus-visible 而非 :focus，避免鼠标点击时也出现焦点圈；
+     全局选择器优先级高于组件里的 outline-none 类，确保逐个补样式不再遗漏 */
+  button:focus-visible,
+  a:focus-visible,
+  select:focus-visible,
+  [role="button"]:focus-visible {
+    outline: 2px solid color-mix(in srgb, var(--foreground) 55%, transparent);
+    outline-offset: 2px;
+  }
+
   html,
   body {
     @apply bg-background text-foreground;
@@ -186,6 +197,13 @@ html[data-design="ios26"] body {
 }
 .ios26-glass-hover:hover {
   background: var(--ios26-glass-bg-hover);
+}
+
+/* 用户系统开启"减弱动态效果"时，关闭所有装饰性过渡 */
+@media (prefers-reduced-motion: reduce) {
+  .ios26-glass-hover {
+    transition: none;
+  }
 }
 
 /* 毛玻璃浮动按钮（圆形） */

@@ -57,7 +57,7 @@ export function MobileStockSheet({
         className="absolute inset-0 bg-black/40 backdrop-blur-sm"
       />
       {/* 底部弹出面板：毛玻璃风格 */}
-      <div className="ios26-glass relative flex max-h-[82vh] w-full flex-col rounded-t-3xl text-slate-100">
+      <div className="ios26-glass relative flex max-h-[82vh] w-full flex-col rounded-t-3xl pb-[env(safe-area-inset-bottom)] text-slate-100">
         {/* 顶部拖拽指示条 */}
         <div className="flex items-center justify-center pt-2">
           <span className="h-1 w-10 rounded-full bg-slate-600/80" aria-hidden />
@@ -133,7 +133,7 @@ export function MobileStockSheet({
               <span>{title ?? ""}</span>
               <span className="tabular-nums">{stocks.length}</span>
             </div>
-            <div className="min-h-0 flex-1 overflow-y-auto pb-[env(safe-area-inset-bottom)]">
+            <div className="min-h-0 flex-1 overflow-y-auto">
               {stocks.map((item) => {
                 const isActive = stock?.code === item.code;
                 return (

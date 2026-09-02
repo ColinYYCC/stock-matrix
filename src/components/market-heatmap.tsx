@@ -233,7 +233,7 @@ function SettingsDrawer({
   return (
     <div className="absolute inset-0 z-[10010] flex items-end justify-center bg-black/62 backdrop-blur-sm" role="dialog" aria-modal="true">
       <button type="button" className="absolute inset-0" aria-label={messages.closeSheet} onClick={onClose} />
-      <section className="relative flex h-[82dvh] w-full flex-col overflow-hidden rounded-t-lg border border-b-0 border-border bg-card text-card-foreground shadow-[0_-24px_100px_rgba(0,0,0,0.48)]">
+      <section className="relative flex h-[82dvh] w-full flex-col overflow-hidden rounded-t-lg border border-b-0 border-border bg-card pb-[env(safe-area-inset-bottom)] text-card-foreground shadow-[0_-24px_100px_rgba(0,0,0,0.48)]">
         <div className="flex items-center justify-center pt-2">
           <span className="h-1 w-10 rounded-full bg-muted-foreground/40" aria-hidden />
         </div>
@@ -1717,7 +1717,7 @@ export function MarketHeatmap({ locale: initialLocale }: { locale: Locale; messa
                 type="button"
                 onClick={() => setIsFullscreen(false)}
                 className={cn(
-                  "absolute right-3 top-3 z-50 inline-flex size-10 items-center justify-center rounded-full transition-colors",
+                  "absolute right-3 top-3 z-50 inline-flex size-11 items-center justify-center rounded-full transition-colors",
                   isIOS26 ? "ios26-glass-float text-white" : "border border-slate-500/70 bg-black/50 text-white shadow-[0_10px_24px_rgba(0,0,0,0.28)] backdrop-blur-sm hover:bg-black/70"
                 )}
                 aria-label={messages.exitFullscreen}

@@ -189,7 +189,7 @@ export function Sidebar({
       <aside
         className={cn(
           "row-start-1 flex min-h-0 min-w-0 flex-col border-r border-border bg-card/95 text-card-foreground",
-          "fixed inset-y-0 left-0 z-50 w-[280px] transform shadow-2xl transition-transform duration-300",
+          "fixed inset-y-0 left-0 z-50 w-[280px] transform shadow-2xl transition-transform duration-300 motion-reduce:transition-none",
           sidebarOpen ? "translate-x-0" : "-translate-x-full",
           "md:static md:z-auto md:row-span-2 md:w-auto md:translate-x-0 md:shadow-none md:transition-none"
         )}
@@ -206,7 +206,7 @@ export function Sidebar({
             type="button"
             onClick={onCloseSidebar}
             aria-label={messages.collapseSidebar}
-            className="inline-flex size-8 shrink-0 items-center justify-center rounded-full border border-border bg-background/70 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground md:hidden"
+            className="inline-flex size-11 shrink-0 items-center justify-center rounded-full border border-border bg-background/70 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground md:size-8 md:hidden"
           >
             <X className="size-4" />
           </button>
@@ -220,7 +220,7 @@ export function Sidebar({
               <div
                 className={cn(
                   "size-1.5 rounded-full",
-                  isTrading ? "animate-pulse" : ""
+                  isTrading ? "motion-safe:animate-pulse" : ""
                 )}
                 style={{
                   backgroundColor: isTrading
@@ -237,7 +237,7 @@ export function Sidebar({
             </div>
             <span className={cn(
               "font-semibold tabular-nums text-[10px]",
-              !isTrading && "text-muted-foreground/60"
+              !isTrading && "text-muted-foreground"
             )}>
               {displayTimeText}
             </span>
@@ -254,7 +254,7 @@ export function Sidebar({
                   type="button"
                   onClick={() => onMarketChange(option)}
                   className={cn(
-                    "flex w-full min-w-0 items-center justify-between border px-1.5 py-1.5 text-left transition-colors",
+                    "flex w-full min-w-0 items-center justify-between border px-1.5 py-3 text-left transition-colors md:py-1.5",
                     isActive
                       ? "border-brand/55 bg-brand/12 text-foreground"
                       : "border-border bg-background hover:bg-muted"
@@ -303,7 +303,7 @@ export function Sidebar({
                 <button
                   type="button"
                   onClick={() => onSubBoardFilterChange(null)}
-                  className="ml-1 shrink-0 text-muted-foreground transition-colors hover:text-foreground"
+                  className="ml-1 shrink-0 p-2 text-muted-foreground transition-colors hover:text-foreground"
                   aria-label="清除子板块筛选"
                 >
                   <X className="size-3.5" />
@@ -332,7 +332,7 @@ export function Sidebar({
                   onClick={() => onTrendFilterChange(option.value)}
                   aria-pressed={trendFilter === option.value}
                   className={cn(
-                    "h-7 border px-1 text-center font-semibold leading-tight transition-colors text-[10.5px]",
+                    "h-11 md:h-7 border px-1 text-center font-semibold leading-tight transition-colors text-[10.5px]",
                     trendFilter === option.value
                       ? "border-brand/70 bg-brand/18 text-foreground"
                       : "border-border bg-background/80 text-muted-foreground hover:bg-muted hover:text-foreground"
@@ -365,7 +365,7 @@ export function Sidebar({
                     title={getPeriodLabel(option, messages)}
                     aria-pressed={isActive}
                     className={cn(
-                      "h-7 border text-center font-semibold tabular-nums transition-colors text-[12px]",
+                      "h-11 md:h-7 border text-center font-semibold tabular-nums transition-colors text-[12px]",
                       isActive
                         ? "border-brand/70 bg-brand/18 text-foreground shadow-[inset_0_0_0_1px_color-mix(in_srgb,var(--brand)_22%,transparent)]"
                         : "border-border bg-background/80 text-muted-foreground hover:bg-muted hover:text-foreground"

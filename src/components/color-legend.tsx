@@ -1,6 +1,6 @@
 "use client";
 
-import { TrendingDown, TrendingUp, Info, Share2 } from "lucide-react";
+import { TrendingDown, TrendingUp, Info, Share2, Loader2 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { formatCompactChange } from "@/lib/format";
@@ -55,7 +55,7 @@ export function ColorLegend({
               aria-label={messages.operationTipsTitle}
               onClick={onOpenTips}
               className={cn(
-                "inline-flex size-7 items-center justify-center bg-transparent transition-colors hover:text-brand focus-visible:text-brand",
+                "inline-flex size-11 items-center justify-center bg-transparent transition-colors hover:text-brand focus-visible:text-brand md:size-7",
                 isLightMode
                   ? "text-muted-foreground hover:bg-muted focus-visible:bg-muted"
                   : "text-slate-400 hover:bg-white/5 focus-visible:bg-white/5"
@@ -88,7 +88,7 @@ export function ColorLegend({
             aria-label={messages.githubProject}
             title={messages.githubProject}
             className={cn(
-              "inline-flex size-7 shrink-0 items-center justify-center bg-transparent transition-colors hover:text-brand focus-visible:text-brand",
+              "inline-flex size-11 shrink-0 items-center justify-center bg-transparent transition-colors hover:text-brand focus-visible:text-brand md:size-7",
               isLightMode
                 ? "text-muted-foreground hover:bg-muted focus-visible:bg-muted"
                 : "text-slate-400 hover:bg-white/5 focus-visible:bg-white/5"
@@ -104,15 +104,14 @@ export function ColorLegend({
         <div className="flex items-center gap-2 sm:gap-3">
           <div className="flex w-36 items-center gap-1.5 sm:w-52 md:w-56">
             <TrendingDown className={cn("size-3 shrink-0", fallTextClass)} aria-label={messages.legendFall} />
-            <div className="relative flex-1">
+            {/* 刻度放在渐变条下方而不是叠在条内：白字叠在浅绿端只有 3.4:1 对比度，
+                独立文字用主题 muted-foreground 色，两种主题下都稳定达标 */}
+            <div className="min-w-0 flex-1">
               <div
                 className="h-3.5 w-full rounded-full shadow-[inset_0_0_0_1px_rgba(255,255,255,0.06)]"
                 style={{ background: legendGradient }}
               />
-              <div
-                className="pointer-events-none absolute inset-0 flex items-center justify-between px-1 text-[8px] font-semibold tabular-nums leading-none text-white md:text-[9px]"
-                style={{ textShadow: "0 1px 2px rgba(0, 0, 0, 0.55)" }}
-              >
+              <div className="mt-0.5 flex items-center justify-between text-[10px] font-semibold tabular-nums leading-none text-muted-foreground">
                 {legendTicks.map((tick) => (
                   <span key={tick}>{tick === 0 ? "0" : formatCompactChange(tick)}</span>
                 ))}
@@ -127,9 +126,13 @@ export function ColorLegend({
             disabled={sharePending}
             aria-label={sharePending ? messages.generatingShareImage : messages.shareToApps}
             title={messages.shareImage}
-            className="inline-flex items-center gap-1 rounded-lg bg-brand px-2 py-1 text-[10px] font-semibold text-brand-foreground shadow-[0_2px_8px_color-mix(in_srgb,var(--brand)_38%,transparent)] transition-all hover:bg-brand/90 disabled:opacity-60 sm:px-2.5 sm:text-[11px]"
+            className="inline-flex min-h-11 items-center gap-1 rounded-lg bg-brand px-2 py-1 text-[10px] font-semibold text-brand-foreground shadow-[0_2px_8px_color-mix(in_srgb,var(--brand)_38%,transparent)] transition-colors hover:bg-brand/90 disabled:opacity-60 sm:min-h-0 sm:px-2.5 sm:text-[11px]"
           >
-            <Share2 className="size-3" />
+            {sharePending ? (
+              <Loader2 className="size-3 animate-spin" aria-hidden />
+            ) : (
+              <Share2 className="size-3" aria-hidden />
+            )}
             <span className="hidden sm:inline">
               {sharePending ? messages.generatingShareImage : messages.shareToApps}
             </span>

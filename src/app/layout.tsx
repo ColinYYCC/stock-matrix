@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Toaster } from "sonner";
 
 import "./globals.css";
@@ -27,6 +27,14 @@ export const metadata: Metadata = {
     title: "股市矩阵 | Stock Matrix",
     description: "用一张可交互热力图快速观察 A 股板块轮动与个股涨跌。",
   },
+};
+
+/** 移动端浏览器地址栏颜色跟随页面主题，避免暗色页面上刺眼的默认地址栏 */
+export const viewport: Viewport = {
+  themeColor: [
+    { media: "(prefers-color-scheme: dark)", color: "#0a0e1a" },
+    { media: "(prefers-color-scheme: light)", color: "#eef1f6" },
+  ],
 };
 
 /**

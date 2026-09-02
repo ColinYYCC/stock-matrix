@@ -114,11 +114,11 @@ export function getChangeTextClass(
 ): string {
   // NaN 表示无数据，显示灰色
   if (Number.isNaN(changePct)) {
-    return tone === "strong" ? "text-slate-500" : "text-muted-foreground";
+    return tone === "strong" ? "text-slate-600" : "text-muted-foreground";
   }
 
   if (Math.abs(changePct) < COLOR_FLAT_THRESHOLD) {
-    return tone === "strong" ? "text-slate-500" : "text-muted-foreground";
+    return tone === "strong" ? "text-slate-600" : "text-muted-foreground";
   }
 
   const isRise = changePct > 0;
@@ -126,12 +126,13 @@ export function getChangeTextClass(
 
   if (shouldUseRed) {
     if (tone === "soft") return "text-red-100";
-    if (tone === "strong") return "text-red-500";
+    // text-red-700 在浅色列表背景上对比度 5.9:1（red-500 只有 3.4:1，不满足 WCAG AA）
+    if (tone === "strong") return "text-red-700";
     return "text-red-400";
   }
 
   if (tone === "soft") return "text-emerald-100";
-  if (tone === "strong") return "text-emerald-600";
+  if (tone === "strong") return "text-emerald-700";
   return "text-emerald-400";
 }
 

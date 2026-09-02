@@ -15,8 +15,9 @@ export function trimTrailingZeros(text: string) {
   return text.replace(/\.0+$/, "").replace(/(\.\d*[1-9])0+$/, "$1");
 }
 
-/** 格式化价格：大于等于 100 的保留 1 位小数，否则保留 2 位 */
+/** 格式化价格：大于等于 100 的保留 1 位小数，否则保留 2 位；无数据（停牌等）显示 -- */
 export function formatPrice(value: number) {
+  if (!Number.isFinite(value)) return "--";
   return value.toFixed(value >= 100 ? 1 : 2);
 }
 

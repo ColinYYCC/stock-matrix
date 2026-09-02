@@ -195,7 +195,7 @@ export function Sidebar({
         className={cn(
           "ios26-glass row-start-1 flex min-h-0 min-w-0 flex-col text-card-foreground",
           // 移动端：从左边滑入的抽屉
-          "fixed inset-y-0 left-0 z-50 w-[280px] transform transition-transform duration-300",
+          "fixed inset-y-0 left-0 z-50 w-[280px] transform transition-transform duration-300 motion-reduce:transition-none",
           sidebarOpen ? "translate-x-0" : "-translate-x-full",
           // 桌面端：固定在网格里，毛玻璃面板浮在背景上
           "md:static md:z-auto md:row-span-2 md:w-auto md:translate-x-0 md:transition-none md:rounded-3xl"
@@ -213,7 +213,7 @@ export function Sidebar({
             type="button"
             onClick={onCloseSidebar}
             aria-label={messages.collapseSidebar}
-            className="ios26-glass-hover inline-flex size-8 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:text-foreground md:hidden"
+            className="ios26-glass-hover inline-flex size-11 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:text-foreground md:size-8 md:hidden"
           >
             <X className="size-4" />
           </button>
@@ -227,7 +227,7 @@ export function Sidebar({
               <div
                 className={cn(
                   "size-1.5 rounded-full",
-                  isTrading ? "animate-pulse" : ""
+                  isTrading ? "motion-safe:animate-pulse" : ""
                 )}
                 style={{
                   backgroundColor: isTrading
@@ -245,7 +245,7 @@ export function Sidebar({
             <div className="flex items-center gap-2">
               <span className={cn(
                 "font-semibold tabular-nums text-[10px]",
-                !isTrading && "text-muted-foreground/60"
+                !isTrading && "text-muted-foreground"
               )}>
                 {displayTimeText}
               </span>
@@ -263,7 +263,7 @@ export function Sidebar({
                   type="button"
                   onClick={() => onMarketChange(option)}
                   className={cn(
-                    "ios26-glass-hover flex w-full min-w-0 items-center justify-between rounded-[10px] border-none px-2.5 py-1.5 text-left transition-all",
+                    "ios26-glass-hover flex w-full min-w-0 items-center justify-between rounded-[10px] border-none px-2.5 py-3 text-left md:py-1.5",
                     isActive && "ios26-glass-active"
                   )}
                 >
@@ -310,7 +310,7 @@ export function Sidebar({
                 <button
                   type="button"
                   onClick={() => onSubBoardFilterChange(null)}
-                  className="ml-1 shrink-0 text-muted-foreground transition-colors hover:text-foreground"
+                  className="ml-1 shrink-0 p-2 text-muted-foreground transition-colors hover:text-foreground"
                   aria-label="清除子板块筛选"
                 >
                   <X className="size-3.5" />
@@ -339,7 +339,7 @@ export function Sidebar({
                   onClick={() => onTrendFilterChange(option.value)}
                   aria-pressed={trendFilter === option.value}
                   className={cn(
-                    "ios26-glass-hover h-7 rounded-[7px] border-none px-1 text-center font-semibold leading-tight transition-all text-[10.5px]",
+                    "ios26-glass-hover h-11 rounded-[7px] border-none px-1 text-center font-semibold leading-tight text-[10.5px] md:h-7",
                     trendFilter === option.value
                       ? "ios26-glass-active text-foreground"
                       : "text-muted-foreground hover:text-foreground"
@@ -372,7 +372,7 @@ export function Sidebar({
                     title={getPeriodLabel(option, messages)}
                     aria-pressed={isActive}
                     className={cn(
-                      "ios26-glass-hover h-7 rounded-[7px] border-none text-center font-semibold tabular-nums transition-all text-[12px]",
+                      "ios26-glass-hover h-11 rounded-[7px] border-none text-center font-semibold tabular-nums text-[12px] md:h-7",
                       isActive
                         ? "ios26-glass-active text-foreground"
                         : "text-muted-foreground hover:text-foreground"

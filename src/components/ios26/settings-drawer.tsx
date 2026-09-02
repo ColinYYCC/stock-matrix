@@ -75,7 +75,7 @@ export function SettingsDrawer({
     <div className="absolute inset-0 z-[10010] flex items-end justify-center bg-black/40 backdrop-blur-sm" role="dialog" aria-modal="true">
       <button type="button" className="absolute inset-0" aria-label={messages.closeSheet} onClick={onClose} />
       {/* 底部弹出面板：毛玻璃风格 */}
-      <section className="ios26-glass relative flex h-[82dvh] w-full flex-col overflow-hidden rounded-t-3xl text-card-foreground">
+      <section className="ios26-glass relative flex h-[82dvh] w-full flex-col overflow-hidden rounded-t-3xl pb-[env(safe-area-inset-bottom)] text-card-foreground">
         <div className="flex items-center justify-center pt-2">
           <span className="h-1 w-10 rounded-full bg-muted-foreground/40" aria-hidden />
         </div>
@@ -106,7 +106,7 @@ export function SettingsDrawer({
                   type="button"
                   onClick={() => onTabChange(item.key)}
                   className={cn(
-                    "ios26-glass-hover inline-flex h-9 shrink-0 items-center gap-2 rounded-[7px] border-none px-3 text-left text-sm font-medium leading-none transition-all md:w-full",
+                    "ios26-glass-hover inline-flex h-9 shrink-0 items-center gap-2 rounded-[7px] border-none px-3 text-left text-sm font-medium leading-none transition- md:w-full",
                     active
                       ? "ios26-glass-active text-foreground"
                       : "text-muted-foreground hover:text-foreground"
@@ -135,7 +135,7 @@ export function SettingsDrawer({
                       onClick={() => onDesignStyleChange("ios26")}
                       aria-pressed={designStyle === "ios26"}
                       className={cn(
-                        "ios26-glass-hover flex items-center gap-2 rounded-[7px] border-none px-3 py-3 text-left text-sm font-semibold transition-all",
+                        "ios26-glass-hover flex items-center gap-2 rounded-[7px] border-none px-3 py-3 text-left text-sm font-semibold transition-",
                         designStyle === "ios26"
                           ? "ios26-glass-active text-foreground"
                           : "text-muted-foreground hover:text-foreground"
@@ -149,7 +149,7 @@ export function SettingsDrawer({
                       onClick={() => onDesignStyleChange("classic")}
                       aria-pressed={designStyle === "classic"}
                       className={cn(
-                        "ios26-glass-hover flex items-center gap-2 rounded-[7px] border-none px-3 py-3 text-left text-sm font-semibold transition-all",
+                        "ios26-glass-hover flex items-center gap-2 rounded-[7px] border-none px-3 py-3 text-left text-sm font-semibold transition-",
                         designStyle === "classic"
                           ? "ios26-glass-active text-foreground"
                           : "text-muted-foreground hover:text-foreground"
@@ -170,7 +170,7 @@ export function SettingsDrawer({
                       onClick={() => onDisplayModeChange("light")}
                       aria-pressed={displayMode === "light"}
                       className={cn(
-                        "ios26-glass-hover flex items-center gap-2 rounded-[7px] border-none px-3 py-3 text-left text-sm font-semibold transition-all",
+                        "ios26-glass-hover flex items-center gap-2 rounded-[7px] border-none px-3 py-3 text-left text-sm font-semibold transition-",
                         displayMode === "light"
                           ? "ios26-glass-active text-foreground"
                           : "text-muted-foreground hover:text-foreground"
@@ -184,7 +184,7 @@ export function SettingsDrawer({
                       onClick={() => onDisplayModeChange("dark")}
                       aria-pressed={displayMode === "dark"}
                       className={cn(
-                        "ios26-glass-hover flex items-center gap-2 rounded-[7px] border-none px-3 py-3 text-left text-sm font-semibold transition-all",
+                        "ios26-glass-hover flex items-center gap-2 rounded-[7px] border-none px-3 py-3 text-left text-sm font-semibold transition-",
                         displayMode === "dark"
                           ? "ios26-glass-active text-foreground"
                           : "text-muted-foreground hover:text-foreground"
@@ -205,7 +205,7 @@ export function SettingsDrawer({
                       onClick={() => onPriceColorModeChange("red-rise")}
                       aria-pressed={priceColorMode === "red-rise"}
                       className={cn(
-                        "ios26-glass-hover rounded-[7px] border-none px-3 py-3 text-left text-sm transition-all",
+                        "ios26-glass-hover rounded-[7px] border-none px-3 py-3 text-left text-sm transition-",
                         priceColorMode === "red-rise"
                           ? "ios26-glass-active"
                           : "text-muted-foreground hover:text-foreground"
@@ -218,7 +218,7 @@ export function SettingsDrawer({
                       onClick={() => onPriceColorModeChange("green-rise")}
                       aria-pressed={priceColorMode === "green-rise"}
                       className={cn(
-                        "ios26-glass-hover rounded-[7px] border-none px-3 py-3 text-left text-sm transition-all",
+                        "ios26-glass-hover rounded-[7px] border-none px-3 py-3 text-left text-sm transition-",
                         priceColorMode === "green-rise"
                           ? "ios26-glass-active"
                           : "text-muted-foreground hover:text-foreground"
