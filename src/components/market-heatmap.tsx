@@ -109,6 +109,22 @@ function weightedAverageChange(
   return totalValue <= 0 ? 0 : weightedSum / totalValue;
 }
 
+/** 遍历股票列表，累计涨/平/跌家数与成交额（阈值 flatThreshold；无数据 NaN 落入平盘分支） */
+function summarizeStocks(stocks: ReadonlyArray<{ changePct: number; turnoverAmount: number }>) {
+  let advanceCount = 0;
+  let flatCount = 0;
+  let declineCount = 0;
+  let turnoverAmount = 0;
+  for (const stock of stocks) {
+    const changePct = stock.changePct;
+    if (changePct > flatThreshold) advanceCount += 1;
+    else if (changePct < -flatThreshold) declineCount += 1;
+    else flatCount += 1;
+    turnoverAmount += stock.turnoverAmount;
+  }
+  return { advanceCount, flatCount, declineCount, turnoverAmount };
+}
+
 /** 按二级行业分组 */
 function groupStocksBySubBoard<
   T extends { code: string; boardName: string; subBoardName: string; value: number; changePct: number },
@@ -537,21 +553,13 @@ export function MarketHeatmap({ locale }: { locale: Locale }) {
     if (boardFilter !== allBoardsValue) {
       const selectedBoard = result.nodes.find((node) => node.name === boardFilter);
       if (selectedBoard) {
-        let advanceCount = 0, flatCount = 0, declineCount = 0, turnoverAmount = 0;
-        for (const stock of selectedBoard.children) {
-          const changePct = stock.changePct;
-          if (changePct > flatThreshold) advanceCount += 1;
-          else if (changePct < -flatThreshold) declineCount += 1;
-          else flatCount += 1;
-          turnoverAmount += stock.turnoverAmount;
-        }
         result = {
           ...result,
           stockCount: selectedBoard.stockCount,
           boardCount: 1,
           // 注意：turnoverPreviousAmount 和 turnoverDelta 保留原始值，
           // 非全市场范围下为 NaN，前端会显示"无对比"而非误显示"持平"
-          summary: { ...result.summary, advanceCount, flatCount, declineCount, turnoverAmount, indexChangePct: weightedAverageChange(selectedBoard.children, {} as QuoteMap) },
+          summary: { ...result.summary, ...summarizeStocks(selectedBoard.children), indexChangePct: weightedAverageChange(selectedBoard.children, {} as QuoteMap) },
           nodes: [selectedBoard],
         };
       }
@@ -563,14 +571,6 @@ export function MarketHeatmap({ locale }: { locale: Locale }) {
       if (board) {
         const subChildren = board.children.filter((stock) => (stock.subBoardName || stock.boardName) === subBoardFilter);
         if (subChildren.length > 0) {
-          let advanceCount = 0, flatCount = 0, declineCount = 0, turnoverAmount = 0;
-          for (const stock of subChildren) {
-            const changePct = stock.changePct;
-            if (changePct > flatThreshold) advanceCount += 1;
-            else if (changePct < -flatThreshold) declineCount += 1;
-            else flatCount += 1;
-            turnoverAmount += stock.turnoverAmount;
-          }
           const subBoardNode = {
             ...board,
             children: subChildren,
@@ -581,7 +581,7 @@ export function MarketHeatmap({ locale }: { locale: Locale }) {
             ...result,
             stockCount: subChildren.length,
             boardCount: 1,
-            summary: { ...result.summary, advanceCount, flatCount, declineCount, turnoverAmount, indexChangePct: weightedAverageChange(subChildren, {} as QuoteMap) },
+            summary: { ...result.summary, ...summarizeStocks(subChildren), indexChangePct: weightedAverageChange(subChildren, {} as QuoteMap) },
             nodes: [subBoardNode],
           };
         }
@@ -600,18 +600,8 @@ export function MarketHeatmap({ locale }: { locale: Locale }) {
         return { ...node, children: filteredChildren, stockCount: filteredChildren.length, value: filteredChildren.reduce((sum, stock) => sum + stock.value, 0) };
       }).filter((node) => node.children.length > 0);
 
-      let advanceCount = 0, flatCount = 0, declineCount = 0, turnoverAmount = 0, totalStockCount = 0;
-      for (const node of filteredNodes) {
-        for (const stock of node.children) {
-          const changePct = stock.changePct;
-          if (changePct > flatThreshold) advanceCount += 1;
-          else if (changePct < -flatThreshold) declineCount += 1;
-          else flatCount += 1;
-          turnoverAmount += stock.turnoverAmount;
-          totalStockCount += 1;
-        }
-      }
-      result = { ...result, stockCount: totalStockCount, boardCount: filteredNodes.length, summary: { ...result.summary, advanceCount, flatCount, declineCount, turnoverAmount }, nodes: filteredNodes };
+      const filteredStocks = filteredNodes.flatMap((node) => node.children);
+      result = { ...result, stockCount: filteredStocks.length, boardCount: filteredNodes.length, summary: { ...result.summary, ...summarizeStocks(filteredStocks) }, nodes: filteredNodes };
     }
 
     return result;

@@ -202,13 +202,9 @@ const zza500Set = new Set(constituentsSeed.zza500);
 
 // ============ 模块级缓存 ============
 
-let quoteCache: QuoteSnapshot | null = null;
-let quotePromise: Promise<QuoteSnapshot> | null = null;
-let summaryCache: MarketSummarySnapshot | null = null;
-let summaryPromise: Promise<MarketSummarySnapshot> | null = null;
-let indexCache: MarketIndexSnapshot | null = null;
-let indexPromise: Promise<MarketIndexSnapshot> | null = null;
 let hasLoggedFallbackWarning = false;
+/** 各缓存工厂注册的清理函数，跨日解锁时统一调用 */
+const marketCacheClearers: Array<() => void> = [];
 
 /** 收盘数据锁定标记：一旦检测到已收盘且获取到有效数据，就锁定不再刷新 */
 let isMarketClosedAndLocked = false;
@@ -245,9 +241,9 @@ function checkAndResetLockIfNewDay(): void {
     isMarketClosedAndLocked = false;
     lockDateString = "";
     // 清除缓存，确保第二天获取最新数据
-    quoteCache = null;
-    summaryCache = null;
-    indexCache = null;
+    for (const clearCache of marketCacheClearers) {
+      clearCache();
+    }
   }
 }
 
@@ -460,6 +456,23 @@ function parseSinaQuotes(rawText: string) {
 
 // ============ 东方财富行情解析 ============
 
+/**
+ * 从东方财级行提取周/月/年各周期涨跌幅（审计 A12：两处解析共用）。
+ * 只在数据真实存在时才写入对应周期，不拿当日涨跌幅冒充。
+ */
+function extractEastmoneyPeriodChanges(
+  row: Record<string, number | string | undefined>
+): Partial<Record<HeatmapPeriodKey, number>> {
+  const changes: Partial<Record<HeatmapPeriodKey, number>> = {};
+  const weekChangePct = parseFiniteValue(row.f109);
+  const monthChangePct = parseFiniteValue(row.f110) ?? parseFiniteValue(row.f24);
+  const yearChangePct = parseFiniteValue(row.f25);
+  if (weekChangePct !== null) changes.week = weekChangePct;
+  if (monthChangePct !== null) changes.month = monthChangePct;
+  if (yearChangePct !== null) changes.year = yearChangePct;
+  return changes;
+}
+
 /** 解析东方财富批量行情返回的 JSON */
 function parseEastmoneyQuotes(payload: unknown) {
   const quotes: Record<string, RemoteQuoteValue> = {};
@@ -481,16 +494,12 @@ function parseEastmoneyQuotes(payload: unknown) {
 
     const dayChangePct =
       parseFiniteValue(row.f3) ?? (previousClose > 0 ? ((price - previousClose) / previousClose) * 100 : 0);
-    // 只在数据真实存在时才写入对应周期，不拿当日涨跌幅冒充
-    const weekChangePct = parseFiniteValue(row.f109);
-    const monthChangePct = parseFiniteValue(row.f110) ?? parseFiniteValue(row.f24);
-    const yearChangePct = parseFiniteValue(row.f25);
     const turnoverAmount = parseFiniteValue(row.f6) ?? 0;
 
-    const changes: Partial<Record<HeatmapPeriodKey, number>> = { day: dayChangePct };
-    if (weekChangePct !== null) changes.week = weekChangePct;
-    if (monthChangePct !== null) changes.month = monthChangePct;
-    if (yearChangePct !== null) changes.year = yearChangePct;
+    const changes: Partial<Record<HeatmapPeriodKey, number>> = {
+      day: dayChangePct,
+      ...extractEastmoneyPeriodChanges(row),
+    };
 
     quotes[code] = {
       price,
@@ -614,15 +623,10 @@ function parseEastmoneyIndexData(payload: unknown): {
 
     if (!name || price <= 0 || dayChangePct === null) continue;
 
-    // 只在数据真实存在时才写入对应周期，不拿当日涨跌幅冒充
-    const weekChangePct = parseFiniteValue(row.f109);
-    const monthChangePct = parseFiniteValue(row.f110) ?? parseFiniteValue(row.f24);
-    const yearChangePct = parseFiniteValue(row.f25);
-
-    const changes: Partial<Record<HeatmapPeriodKey, number>> = { day: dayChangePct };
-    if (weekChangePct !== null) changes.week = weekChangePct;
-    if (monthChangePct !== null) changes.month = monthChangePct;
-    if (yearChangePct !== null) changes.year = yearChangePct;
+    const changes: Partial<Record<HeatmapPeriodKey, number>> = {
+      day: dayChangePct,
+      ...extractEastmoneyPeriodChanges(row),
+    };
 
     summaries[market] = {
       name,
@@ -841,135 +845,72 @@ async function fetchSummaryFromRemote(): Promise<MarketSummarySnapshot> {
 
 // ============ 模块级缓存 + Promise 去重 ============
 
-async function getCachedMarketIndex() {
-  const now = Date.now();
+/**
+ * 通用行情缓存读取器（审计 A9：原三个 getter 约 45 行逐字重复，收敛为一个工厂）。
+ * 流程：跨日解锁 → 收盘锁 → TTL 内直接返回 → Promise 去重 → 失败回退旧缓存。
+ * 收盘锁命中后不再发任何请求，直到 checkAndResetLockIfNewDay 跨日清缓存。
+ */
+function createMarketCache<T extends { timestamp: number }>(
+  fetcher: () => Promise<T>,
+  ttlMs: number
+): () => Promise<T> {
+  let cache: T | null = null;
+  let pending: Promise<T> | null = null;
 
-  // 先检查是否需要跨日解锁
-  checkAndResetLockIfNewDay();
+  // 注册清理函数，供跨日解锁时统一清空
+  marketCacheClearers.push(() => {
+    cache = null;
+  });
 
-  // 收盘后锁定机制
-  if (isMarketClosedAndLocked && indexCache) {
-    return indexCache;
-  }
+  return async function getCached(): Promise<T> {
+    const now = Date.now();
 
-  if (shouldLockAfterMarketClose() && indexCache && !isMarketClosedAndLocked) {
-    applyMarketCloseLock();
-    return indexCache;
-  }
+    // 先检查是否需要跨日解锁
+    checkAndResetLockIfNewDay();
 
-  if (indexCache && now - indexCache.timestamp < quoteCacheMs) {
-    return indexCache;
-  }
+    // 收盘后锁定机制：已收盘且已有有效缓存，直接返回缓存数据
+    if (isMarketClosedAndLocked && cache) {
+      return cache;
+    }
 
-  if (indexPromise) {
-    return indexPromise;
-  }
+    // 检查是否刚进入收盘状态，需要锁定
+    if (shouldLockAfterMarketClose() && cache && !isMarketClosedAndLocked) {
+      applyMarketCloseLock();
+      return cache;
+    }
 
-  indexPromise = fetchMarketIndex()
-    .then((snapshot) => {
-      indexCache = snapshot;
-      if (shouldLockAfterMarketClose() && !isMarketClosedAndLocked) {
-        applyMarketCloseLock();
-      }
-      return snapshot;
-    })
-    .catch((error) => {
-      if (indexCache) return indexCache;
-      throw error;
-    })
-    .finally(() => {
-      indexPromise = null;
-    });
+    if (cache && now - cache.timestamp < ttlMs) {
+      return cache;
+    }
 
-  return indexPromise;
+    if (pending) {
+      return pending;
+    }
+
+    pending = fetcher()
+      .then((snapshot) => {
+        cache = snapshot;
+        if (shouldLockAfterMarketClose() && !isMarketClosedAndLocked) {
+          applyMarketCloseLock();
+        }
+        return snapshot;
+      })
+      .catch((error) => {
+        // 拉取失败时退回旧缓存（可能过期但不至于空白），没有旧缓存才向上抛
+        if (cache) return cache;
+        throw error;
+      })
+      .finally(() => {
+        pending = null;
+      });
+
+    return pending;
+  };
 }
 
-async function getCachedQuotes() {
-  const now = Date.now();
-
-  // 先检查是否需要跨日解锁
-  checkAndResetLockIfNewDay();
-
-  // 收盘后锁定机制：如果已收盘且已有有效缓存，直接返回缓存数据
-  if (isMarketClosedAndLocked && quoteCache) {
-    return quoteCache;
-  }
-
-  // 检查是否刚进入收盘状态，需要锁定
-  if (shouldLockAfterMarketClose() && quoteCache && !isMarketClosedAndLocked) {
-    applyMarketCloseLock();
-    return quoteCache;
-  }
-
-  if (quoteCache && now - quoteCache.timestamp < quoteCacheMs) {
-    return quoteCache;
-  }
-
-  if (quotePromise) {
-    return quotePromise;
-  }
-
-  quotePromise = fetchQuotesFromRemote(dynamicStocks)
-    .then((snapshot) => {
-      quoteCache = snapshot;
-      if (shouldLockAfterMarketClose() && !isMarketClosedAndLocked) {
-        applyMarketCloseLock();
-      }
-      return snapshot;
-    })
-    .catch((error) => {
-      if (quoteCache) return quoteCache;
-      throw error;
-    })
-    .finally(() => {
-      quotePromise = null;
-    });
-
-  return quotePromise;
-}
-
-async function getCachedSummary() {
-  const now = Date.now();
-
-  // 先检查是否需要跨日解锁
-  checkAndResetLockIfNewDay();
-
-  // 收盘后锁定机制
-  if (isMarketClosedAndLocked && summaryCache) {
-    return summaryCache;
-  }
-
-  if (shouldLockAfterMarketClose() && summaryCache && !isMarketClosedAndLocked) {
-    applyMarketCloseLock();
-    return summaryCache;
-  }
-
-  if (summaryCache && now - summaryCache.timestamp < summaryCacheMs) {
-    return summaryCache;
-  }
-
-  if (summaryPromise) {
-    return summaryPromise;
-  }
-
-  summaryPromise = fetchSummaryFromRemote()
-    .then((snapshot) => {
-      summaryCache = snapshot;
-      if (shouldLockAfterMarketClose() && !isMarketClosedAndLocked) {
-        applyMarketCloseLock();
-      }
-      return snapshot;
-    })
-    .catch((error) => {
-      if (summaryCache) return summaryCache;
-      throw error;
-    })
-    .finally(() => {
-      summaryPromise = null;
-    });
-
-  return summaryPromise;
-}
+const getCachedQuotes = createMarketCache(() => fetchQuotesFromRemote(dynamicStocks), quoteCacheMs);
+const getCachedSummary = createMarketCache(fetchSummaryFromRemote, summaryCacheMs);
+const getCachedMarketIndex = createMarketCache(fetchMarketIndex, quoteCacheMs);
 
 // ============ 数据构建函数 ============
 
