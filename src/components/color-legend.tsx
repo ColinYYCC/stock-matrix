@@ -12,11 +12,20 @@ import {
 } from "@/lib/heatmap-color";
 import type { HeatmapMessages } from "@/lib/i18n";
 import type { PriceColorMode } from "@/types/heatmap";
+import type { DesignStyle } from "@/hooks/use-design-style";
+import { skins } from "@/components/skin";
 
-/** 底部涨跌图例 + 操作提示 + 截图分享按钮 */
+/**
+ * 底部涨跌图例 + 操作提示 + 截图分享按钮
+ *
+ * classic / ios26 双皮肤共用一个组件，样式差异全部来自 skin.ts。
+ * 刻度放在渐变条下方而不是叠在条内：白字叠在浅绿端只有 3.4:1 对比度，
+ * 独立文字用主题 muted-foreground 色，两种主题下都稳定达标。
+ */
 export function ColorLegend({
   messages,
   priceColorMode,
+  designStyle,
   isLightMode,
   areaTipMessage,
   isMobile,
@@ -27,6 +36,7 @@ export function ColorLegend({
 }: {
   messages: HeatmapMessages;
   priceColorMode: PriceColorMode;
+  designStyle: DesignStyle;
   isLightMode: boolean;
   areaTipMessage: string;
   isMobile: boolean;
@@ -35,17 +45,13 @@ export function ColorLegend({
   onShare: () => void;
   githubUrl: string;
 }) {
+  const skin = skins[designStyle].colorLegend;
   const legendGradient = getLegendGradient(priceColorMode);
   const riseTextClass = getRiseTextClass(priceColorMode);
   const fallTextClass = getFallTextClass(priceColorMode);
 
   return (
-    <div
-      className={cn(
-        "col-span-1 row-start-2 border-t border-border px-3 py-1.5 sm:px-4 md:col-start-2",
-        isLightMode ? "bg-card/95" : "bg-[#151a21]"
-      )}
-    >
+    <div className={isLightMode ? skin.containerLight : skin.containerDark}>
       <div className="flex items-center justify-between gap-2 sm:gap-3">
         {/* 左侧：操作提示 + GitHub 链接 */}
         <div className="flex min-w-0 items-center gap-2">
@@ -54,23 +60,11 @@ export function ColorLegend({
               type="button"
               aria-label={messages.operationTipsTitle}
               onClick={onOpenTips}
-              className={cn(
-                "inline-flex size-11 items-center justify-center bg-transparent transition-colors hover:text-brand focus-visible:text-brand md:size-7",
-                isLightMode
-                  ? "text-muted-foreground hover:bg-muted focus-visible:bg-muted"
-                  : "text-slate-400 hover:bg-white/5 focus-visible:bg-white/5"
-              )}
+              className={isLightMode ? skin.infoButtonLight : skin.infoButtonDark}
             >
               <Info className="size-3.5" />
             </button>
-            <div
-              className={cn(
-                "pointer-events-none absolute bottom-full left-0 z-40 mb-2 w-64 border p-2 text-[11px] leading-5 opacity-0 shadow-[0_18px_48px_rgba(0,0,0,0.35)] backdrop-blur-sm transition-opacity group-hover:opacity-100 group-focus-within:opacity-100",
-                isLightMode
-                  ? "border-border bg-popover/96 text-popover-foreground"
-                  : "border-slate-700/90 bg-[#0f1319]/96 text-slate-300"
-              )}
-            >
+            <div className={isLightMode ? skin.tooltipLight : skin.tooltipDark}>
               <p>{areaTipMessage.replace(/^·\s*/, "")}</p>
               <p>{messages.tipColor.replace(/^·\s*/, "")}</p>
               <p>{(isMobile ? messages.tipTap : messages.tipDoubleClick).replace(/^·\s*/, "")}</p>
@@ -87,12 +81,7 @@ export function ColorLegend({
             rel="noopener noreferrer"
             aria-label={messages.githubProject}
             title={messages.githubProject}
-            className={cn(
-              "inline-flex size-11 shrink-0 items-center justify-center bg-transparent transition-colors hover:text-brand focus-visible:text-brand md:size-7",
-              isLightMode
-                ? "text-muted-foreground hover:bg-muted focus-visible:bg-muted"
-                : "text-slate-400 hover:bg-white/5 focus-visible:bg-white/5"
-            )}
+            className={isLightMode ? skin.githubLinkLight : skin.githubLinkDark}
           >
             <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden className="size-3.5">
               <path d="M12 .5C5.65.5.5 5.66.5 12.03c0 5.1 3.3 9.43 7.87 10.95.58.1.79-.25.79-.56l-.02-2.16c-3.2.7-3.88-1.55-3.88-1.55-.52-1.34-1.28-1.69-1.28-1.69-1.05-.71.08-.7.08-.7 1.16.08 1.77 1.2 1.77 1.2 1.03 1.78 2.71 1.26 3.37.96.1-.75.4-1.26.73-1.55-2.55-.29-5.23-1.28-5.23-5.7 0-1.26.45-2.3 1.19-3.1-.12-.3-.52-1.5.11-3.13 0 0 .97-.31 3.19 1.18a10.9 10.9 0 0 1 5.8 0c2.21-1.5 3.18-1.18 3.18-1.18.64 1.63.24 2.83.12 3.13.74.8 1.18 1.84 1.18 3.1 0 4.43-2.69 5.4-5.25 5.68.41.36.78 1.08.78 2.18l-.01 3.23c0 .31.2.67.8.55A11.54 11.54 0 0 0 23.5 12.03C23.5 5.66 18.35.5 12 .5Z" />
@@ -104,8 +93,6 @@ export function ColorLegend({
         <div className="flex items-center gap-2 sm:gap-3">
           <div className="flex w-36 items-center gap-1.5 sm:w-52 md:w-56">
             <TrendingDown className={cn("size-3 shrink-0", fallTextClass)} aria-label={messages.legendFall} />
-            {/* 刻度放在渐变条下方而不是叠在条内：白字叠在浅绿端只有 3.4:1 对比度，
-                独立文字用主题 muted-foreground 色，两种主题下都稳定达标 */}
             <div className="min-w-0 flex-1">
               <div
                 className="h-3.5 w-full rounded-full shadow-[inset_0_0_0_1px_rgba(255,255,255,0.06)]"
@@ -126,7 +113,7 @@ export function ColorLegend({
             disabled={sharePending}
             aria-label={sharePending ? messages.generatingShareImage : messages.shareToApps}
             title={messages.shareImage}
-            className="inline-flex min-h-11 items-center gap-1 rounded-lg bg-brand px-2 py-1 text-[10px] font-semibold text-brand-foreground shadow-[0_2px_8px_color-mix(in_srgb,var(--brand)_38%,transparent)] transition-colors hover:bg-brand/90 disabled:opacity-60 sm:min-h-0 sm:px-2.5 sm:text-[11px]"
+            className={skin.shareButton}
           >
             {sharePending ? (
               <Loader2 className="size-3 animate-spin" aria-hidden />

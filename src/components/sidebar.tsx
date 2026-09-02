@@ -18,6 +18,8 @@ import type {
   PriceColorMode,
 } from "@/types/heatmap";
 import type { TreemapResponse } from "@/types/heatmap";
+import type { DesignStyle } from "@/hooks/use-design-style";
+import { skins } from "@/components/skin";
 
 /** 侧边栏可用的市场选项 */
 const marketOptions: MarketKey[] = ["all", "sse", "szse", "hs300", "zza500", "cyb", "kcb"];
@@ -100,7 +102,7 @@ function getTrendColor(trend: ReturnType<typeof getTurnoverTrend>, riseTextClass
   return "text-muted-foreground";
 }
 
-/** 侧边栏属性 */
+/** 侧边栏属性（classic / ios26 双皮肤共用，样式差异全部来自 skin.ts） */
 type SidebarProps = {
   messages: HeatmapMessages;
   locale: "zh" | "en";
@@ -110,6 +112,7 @@ type SidebarProps = {
   subBoardFilter: string | null;
   trendFilter: string;
   priceColorMode: PriceColorMode;
+  designStyle: DesignStyle;
   marketSummaries: Partial<Record<MarketKey, MarketSummary>>;
   treemapData: TreemapResponse | null;
   marketOverview: MarketOverview | null;
@@ -138,6 +141,7 @@ export function Sidebar({
   subBoardFilter,
   trendFilter,
   priceColorMode,
+  designStyle,
   marketSummaries,
   treemapData,
   marketOverview,
@@ -156,6 +160,8 @@ export function Sidebar({
   onCloseSidebar,
 }: SidebarProps) {
   if (isFullscreen) return null;
+
+  const skin = skins[designStyle].sidebar;
 
   // 显示数据的真实时间戳（北京时间），而非客户端当前时间
   // 超过 24 小时时显示日期+时间，否则只显示时间
@@ -182,39 +188,38 @@ export function Sidebar({
           type="button"
           onClick={onCloseSidebar}
           aria-label={messages.collapseSidebar}
-          className="fixed inset-0 z-40 bg-black/60 backdrop-blur-sm md:hidden"
+          className={skin.overlay}
         />
       )}
 
       <aside
         className={cn(
-          "row-start-1 flex min-h-0 min-w-0 flex-col border-r border-border bg-card/95 text-card-foreground",
-          "fixed inset-y-0 left-0 z-50 w-[280px] transform shadow-2xl transition-transform duration-300 motion-reduce:transition-none",
+          "row-start-1 flex min-h-0 min-w-0 flex-col text-card-foreground",
+          skin.asideSurface,
+          // 移动端：从左边滑入的抽屉
+          "fixed inset-y-0 left-0 z-50 w-[280px] transform transition-transform duration-300 motion-reduce:transition-none",
           sidebarOpen ? "translate-x-0" : "-translate-x-full",
-          "md:static md:z-auto md:row-span-2 md:w-auto md:translate-x-0 md:shadow-none md:transition-none"
+          // 桌面端：固定在网格里
+          "md:static md:z-auto md:row-span-2 md:w-auto md:translate-x-0 md:transition-none",
+          skin.asideDesktopExtra
         )}
       >
         {/* 标题栏 */}
-        <div className={cn("flex items-center justify-between gap-2 border-b border-border px-2 py-1.5 sm:px-2.5")}>
+        <div className={skin.header}>
           <div className="flex min-w-0 items-center gap-2">
             <img src="/icon.svg" alt="" className="size-7 shrink-0" decoding="async" />
             <h2 className="min-w-0 truncate whitespace-nowrap font-semibold leading-tight text-[13px] sm:text-sm">
               {messages.title}
             </h2>
           </div>
-          <button
-            type="button"
-            onClick={onCloseSidebar}
-            aria-label={messages.collapseSidebar}
-            className="inline-flex size-11 shrink-0 items-center justify-center rounded-full border border-border bg-background/70 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground md:size-8 md:hidden"
-          >
+          <button type="button" onClick={onCloseSidebar} aria-label={messages.collapseSidebar} className={skin.closeButton}>
             <X className="size-4" />
           </button>
         </div>
 
         <div className="flex-1 overflow-y-auto overflow-x-hidden px-1.5 py-1.5 sm:px-2">
           {/* 最近刷新时间 + 交易状态 */}
-          <div className="mb-1.5 flex items-center justify-between border border-border bg-muted/18 px-1.5 py-1">
+          <div className={skin.statusPill}>
             <div className="flex items-center gap-1.5">
               {/* 交易状态点 */}
               <div
@@ -244,7 +249,7 @@ export function Sidebar({
           </div>
 
           {/* 市场范围切换 */}
-          <div className="space-y-1">
+          <div className={skin.marketList}>
             {marketOptions.map((option) => {
               const summary = marketSummaries[option];
               const isActive = market === option;
@@ -254,10 +259,8 @@ export function Sidebar({
                   type="button"
                   onClick={() => onMarketChange(option)}
                   className={cn(
-                    "flex w-full min-w-0 items-center justify-between border px-1.5 py-3 text-left transition-colors md:py-1.5",
-                    isActive
-                      ? "border-brand/55 bg-brand/12 text-foreground"
-                      : "border-border bg-background hover:bg-muted"
+                    skin.marketButtonBase,
+                    isActive ? skin.marketButtonActive : skin.marketButtonInactive
                   )}
                 >
                   <span className="min-w-0 pr-2 leading-tight text-[12px]">
@@ -277,7 +280,7 @@ export function Sidebar({
           </div>
 
           {/* 一级板块筛选 */}
-          <div className="mt-1.5 border border-border bg-muted/18 p-1.5">
+          <div className={skin.groupCard}>
             <label
               htmlFor="board-filter"
               className="block font-semibold uppercase tracking-[0.12em] text-muted-foreground text-[10px]"
@@ -288,7 +291,7 @@ export function Sidebar({
               id="board-filter"
               value={boardFilter}
               onChange={(e) => onBoardFilterChange(e.target.value)}
-              className="mt-1 h-8 w-full min-w-0 border border-border bg-background/85 px-2 font-semibold text-foreground text-[12px] outline-none transition-colors hover:bg-muted focus:border-brand/70"
+              className={skin.boardSelect}
             >
               <option value={allBoardsValue}>{messages.allBoards}</option>
               {boardFilterOptions.map((board) => (
@@ -298,7 +301,7 @@ export function Sidebar({
               ))}
             </select>
             {subBoardFilter && (
-              <div className="mt-1 flex items-center justify-between border border-brand/40 bg-brand/10 px-1.5 py-1">
+              <div className={skin.subBoardChip}>
                 <span className="min-w-0 truncate font-semibold text-[11px] text-foreground">{subBoardFilter}</span>
                 <button
                   type="button"
@@ -313,14 +316,14 @@ export function Sidebar({
           </div>
 
           {/* 涨跌筛选 */}
-          <div className="mt-1.5 border border-border bg-muted/18 p-1.5">
+          <div className={skin.groupCard}>
             <label
               htmlFor="trend-filter"
               className="block font-semibold uppercase tracking-[0.12em] text-muted-foreground text-[10px]"
             >
               {messages.trendFilterLabel}
             </label>
-            <div className="mt-1 grid grid-cols-3 gap-1">
+            <div className={skin.trendSegment}>
               {[
                 { value: allTrendsValue, label: messages.allTrends },
                 { value: risingOnlyValue, label: messages.risingOnly },
@@ -332,10 +335,8 @@ export function Sidebar({
                   onClick={() => onTrendFilterChange(option.value)}
                   aria-pressed={trendFilter === option.value}
                   className={cn(
-                    "h-11 md:h-7 border px-1 text-center font-semibold leading-tight transition-colors text-[10.5px]",
-                    trendFilter === option.value
-                      ? "border-brand/70 bg-brand/18 text-foreground"
-                      : "border-border bg-background/80 text-muted-foreground hover:bg-muted hover:text-foreground"
+                    skin.trendButtonBase,
+                    trendFilter === option.value ? skin.trendButtonActive : skin.trendButtonInactive
                   )}
                 >
                   {option.label}
@@ -345,7 +346,7 @@ export function Sidebar({
           </div>
 
           {/* 涨跌周期切换 */}
-          <div className="mt-1.5 border border-border bg-muted/18 p-1.5">
+          <div className={skin.groupCard}>
             <div className="flex items-center justify-between gap-2">
               <p className="font-semibold uppercase tracking-[0.12em] text-muted-foreground text-[10px]">
                 {messages.metricLabel}
@@ -354,7 +355,7 @@ export function Sidebar({
                 {getPeriodLabel(period, messages)}
               </span>
             </div>
-            <div className="mt-1 grid grid-cols-4 gap-1">
+            <div className={skin.periodSegment}>
               {periodOptions.map((option) => {
                 const isActive = period === option;
                 return (
@@ -365,10 +366,8 @@ export function Sidebar({
                     title={getPeriodLabel(option, messages)}
                     aria-pressed={isActive}
                     className={cn(
-                      "h-11 md:h-7 border text-center font-semibold tabular-nums transition-colors text-[12px]",
-                      isActive
-                        ? "border-brand/70 bg-brand/18 text-foreground shadow-[inset_0_0_0_1px_color-mix(in_srgb,var(--brand)_22%,transparent)]"
-                        : "border-border bg-background/80 text-muted-foreground hover:bg-muted hover:text-foreground"
+                      skin.periodButtonBase,
+                      isActive ? skin.periodButtonActive : skin.periodButtonInactive
                     )}
                   >
                     {getCompactPeriodLabel(option)}
@@ -380,7 +379,7 @@ export function Sidebar({
 
           {/* 市场概览统计 */}
           {marketOverview && (
-            <div className="mt-1.5 border border-border bg-muted/28 p-1.5">
+            <div className={skin.statsCard}>
               <div className="grid grid-cols-3 gap-2">
                 <div className="flex min-w-0 flex-col items-center text-center">
                   <p className={cn("tracking-[0.06em]", riseTextClass, "text-[11px]")}>
@@ -409,7 +408,7 @@ export function Sidebar({
               </div>
 
               {/* 成交额统计 */}
-              <div className="mt-2 grid grid-cols-2 items-stretch gap-1.5 border-t border-border/70 pt-2">
+              <div className={skin.turnoverDivider}>
                 <div className="flex min-w-0 flex-col">
                   <p className="leading-tight tracking-[0.04em] text-muted-foreground text-[10px]">
                     {messages.turnoverLabel}
@@ -457,29 +456,29 @@ export function Sidebar({
         </div>
 
         {/* 底部操作按钮 */}
-        <div className="grid grid-cols-1 gap-1.5 border-t border-border p-1.5">
+        <div className={skin.actionArea}>
           <Button
-            variant="outline"
+            variant={skin.actionButton.variant}
             size="sm"
-            className="justify-start rounded-lg border-border bg-background/80 text-foreground hover:bg-muted"
+            className={skin.actionButton.className}
             onClick={onResetView}
           >
             <RotateCcw className="mr-2 size-4" />
             {messages.resetView}
           </Button>
           <Button
-            variant="outline"
+            variant={skin.actionButton.variant}
             size="sm"
-            className="justify-start rounded-lg border-border bg-background/80 text-foreground hover:bg-muted"
+            className={skin.actionButton.className}
             onClick={onToggleFullscreen}
           >
             <Maximize2 className="mr-2 size-4" />
             {messages.enterFullscreen}
           </Button>
           <Button
-            variant="outline"
+            variant={skin.actionButton.variant}
             size="sm"
-            className="justify-start rounded-lg border-border bg-background/80 text-foreground hover:bg-muted"
+            className={skin.actionButton.className}
             onClick={onOpenSettings}
           >
             <Settings2 className="mr-2 size-4" />

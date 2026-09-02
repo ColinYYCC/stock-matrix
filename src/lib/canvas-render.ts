@@ -95,10 +95,15 @@ const LIQUID_GLASS_RADIUS = {
 /**
  * 绘制圆角矩形路径（iOS 26 Liquid Glass 核心：所有矩形都带圆角）
  * 当宽或高太小时自动降级为直角，避免圆角交叉变形
+ *
+ * topOnly = true 时只圆上面两个角、下面两个角保持直角——
+ * 用于板块标题栏：它叠在色块上方，底边要和下方内容严丝合缝，
+ * 四角全圆会在底边两角漏出月牙形缝隙
  */
 function roundRectPath(
   context: CanvasRenderingContext2D,
-  x: number, y: number, width: number, height: number, radius: number
+  x: number, y: number, width: number, height: number, radius: number,
+  topOnly = false
 ) {
   const w = Math.max(0, width);
   const h = Math.max(0, height);
@@ -107,6 +112,16 @@ function roundRectPath(
     return;
   }
   const r = Math.min(radius, w / 2, h / 2);
+  if (topOnly) {
+    // 上圆下直：左上、右上用弧，右边、底边、左边都是直线
+    context.moveTo(x, y + r);
+    context.arcTo(x, y, x + w, y, r);
+    context.arcTo(x + w, y, x + w, y + h, r);
+    context.lineTo(x + w, y + h);
+    context.lineTo(x, y + h);
+    context.closePath();
+    return;
+  }
   context.moveTo(x + r, y);
   context.arcTo(x + w, y, x + w, y + h, r);
   context.arcTo(x + w, y + h, x, y + h, r);
@@ -603,10 +618,10 @@ export function drawHeatmap(params: DrawHeatmapParams) {
     if (subBoard.titleHeight > 0) {
       // A2: iOS 26 毛玻璃标题栏 —— 半透明底色 + 涨跌色叠加
       const headerColor = getBoardHeaderColor(subBoard.changePct, priceColorMode);
-      // 先画半透明玻璃底
+      // 先画半透明玻璃底（上圆下直：底边与下方色块衔接，不能漏缝）
       context.fillStyle = "rgba(20, 24, 35, 0.55)";
       context.beginPath();
-      roundRectPath(context, subBoard.x, subBoard.y, subBoard.width, subBoard.titleHeight, LIQUID_GLASS_RADIUS.subBoard);
+      roundRectPath(context, subBoard.x, subBoard.y, subBoard.width, subBoard.titleHeight, LIQUID_GLASS_RADIUS.subBoard, true);
       context.fill();
       // 再叠一层半透明涨跌色（模拟毛玻璃透出底层颜色的效果）
       context.fillStyle = withAlpha(headerColor, 0.45);
@@ -639,11 +654,11 @@ export function drawHeatmap(params: DrawHeatmapParams) {
   for (const board of boardRects) {
     const isActiveBoard = activeBoardName === board.name;
     if (board.titleHeight > 0) {
-      // A2: iOS 26 毛玻璃标题栏 —— 一级板块同上
+      // A2: iOS 26 毛玻璃标题栏 —— 一级板块同上（上圆下直）
       const headerColor = getBoardHeaderColor(board.changePct, priceColorMode);
       context.fillStyle = "rgba(20, 24, 35, 0.60)";
       context.beginPath();
-      roundRectPath(context, board.x, board.y, board.width, board.titleHeight, LIQUID_GLASS_RADIUS.board);
+      roundRectPath(context, board.x, board.y, board.width, board.titleHeight, LIQUID_GLASS_RADIUS.board, true);
       context.fill();
       context.fillStyle = withAlpha(headerColor, 0.42);
       context.fill();

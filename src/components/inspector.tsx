@@ -8,6 +8,8 @@ import { getChangeTextClass, getInspectorHeaderColor } from "@/lib/heatmap-color
 import { getSparklineUrl, getDailyKlineUrl } from "@/lib/stock-image";
 import type { HeatmapMessages } from "@/lib/i18n";
 import type { PriceColorMode } from "@/types/heatmap";
+import type { DesignStyle } from "@/hooks/use-design-style";
+import { skins } from "@/components/skin";
 
 /** 悬浮面板中单只股票的信息 */
 type InspectorStock = {
@@ -27,7 +29,7 @@ export type InspectorStyle = {
   maxHeight: number;
 } | null;
 
-/** 悬浮详情面板属性 */
+/** 悬浮详情面板属性（classic / ios26 双皮肤共用，样式差异全部来自 skin.ts） */
 type InspectorProps = {
   style: InspectorStyle;
   title: string | null;
@@ -35,6 +37,7 @@ type InspectorProps = {
   stocks: InspectorStock[];
   messages: HeatmapMessages;
   priceColorMode: PriceColorMode;
+  designStyle: DesignStyle;
   listMaxHeight: number;
 };
 
@@ -43,6 +46,7 @@ type InspectorProps = {
  *
  * 性能优化：鼠标在同一板块内悬停到不同股票时，只有 active 状态变化的两个项
  * （旧的取消高亮 + 新的高亮）会重新渲染，其余项跳过。
+ * 两套皮肤的列表项样式完全一致，无需进 skin 表。
  */
 const StockListItem = memo(function StockListItem({
   code,
@@ -108,26 +112,19 @@ const StockListItem = memo(function StockListItem({
  * - 同板块个股列表（按涨跌幅绝对值排序）
  */
 export const Inspector = forwardRef<HTMLDivElement, InspectorProps>(function Inspector(
-  { style, title, stock, stocks, messages, priceColorMode, listMaxHeight },
+  { style, title, stock, stocks, messages, priceColorMode, designStyle, listMaxHeight },
   listRef
 ) {
   if (!style) return null;
 
+  const skin = skins[designStyle].inspector;
+
   return (
-    <aside
-      className="pointer-events-none absolute z-30 overflow-hidden rounded-lg border border-slate-700/80 bg-[#0f1319] text-slate-100 shadow-[0_22px_72px_rgba(0,0,0,0.36)]"
-      style={{
-        left: style.left,
-        top: style.top,
-        width: style.width,
-        minWidth: style.width,
-        maxHeight: style.maxHeight,
-      }}
-    >
+    <aside className={skin.panel} style={{ left: style.left, top: style.top, width: style.width, minWidth: style.width, maxHeight: style.maxHeight }}>
       {stock && (
         <>
           {/* 个股信息头部：背景色跟随涨跌色模式 */}
-          <div className="border-b border-slate-700/80 px-3 py-2.5" style={{ backgroundColor: getInspectorHeaderColor(priceColorMode) }}>
+          <div className={skin.header} style={{ backgroundColor: getInspectorHeaderColor(priceColorMode) }}>
             <p className="text-[13px] font-semibold tracking-[0.02em] text-slate-100">
               {title ?? ""}
             </p>
@@ -163,7 +160,7 @@ export const Inspector = forwardRef<HTMLDivElement, InspectorProps>(function Ins
           </div>
 
           {/* 日线 K 线图 */}
-          <div className="border-b border-slate-700/80 bg-white p-1.5">
+          <div className={skin.klineFrame}>
             <img
               src={getDailyKlineUrl(stock.code)}
               alt={`${stock.name} K-line`}

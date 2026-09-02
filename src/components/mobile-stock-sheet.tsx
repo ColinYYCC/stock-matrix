@@ -8,6 +8,8 @@ import { getChangeTextClass } from "@/lib/heatmap-color";
 import { getSparklineUrl, getDailyKlineUrl } from "@/lib/stock-image";
 import type { HeatmapMessages } from "@/lib/i18n";
 import type { PriceColorMode } from "@/types/heatmap";
+import type { DesignStyle } from "@/hooks/use-design-style";
+import { skins } from "@/components/skin";
 
 /** 移动端个股详情面板中单只股票的信息 */
 type MobileStockSheetStock = {
@@ -26,6 +28,7 @@ type MobileStockSheetProps = {
   stocks: MobileStockSheetStock[];
   messages: HeatmapMessages;
   priceColorMode: PriceColorMode;
+  designStyle: DesignStyle;
   onClose: () => void;
   onSelectStock: (code: string) => void;
   onOpenXueqiu: (code: string) => void;
@@ -35,10 +38,8 @@ type MobileStockSheetProps = {
  * 移动端个股详情面板
  *
  * 手机上点击股票色块后，从屏幕底部弹出，包含：
- * - 当前个股：名称、价格、涨跌幅
- * - 新浪日线 K 线图
- * - 雪球跳转按钮
- * - 同板块个股列表（可点击切换查看）
+ * 当前个股信息、新浪日线 K 线图、雪球跳转按钮、同板块个股列表（可点击切换查看）。
+ * classic / ios26 双皮肤共用一个组件，样式差异全部来自 skin.ts。
  */
 export function MobileStockSheet({
   title,
@@ -46,20 +47,18 @@ export function MobileStockSheet({
   stocks,
   messages,
   priceColorMode,
+  designStyle,
   onClose,
   onSelectStock,
   onOpenXueqiu,
 }: MobileStockSheetProps) {
+  const skin = skins[designStyle].mobileStockSheet;
+
   return (
     <div className="fixed inset-0 z-[9998] flex flex-col justify-end" role="dialog" aria-modal="true">
       {/* 点击遮罩层关闭面板 */}
-      <button
-        type="button"
-        aria-label={messages.closeSheet}
-        onClick={onClose}
-        className="absolute inset-0 bg-black/60 backdrop-blur-sm"
-      />
-      <div className="relative flex max-h-[82vh] w-full flex-col rounded-t-2xl border-t border-slate-700/80 bg-[#0f1319] pb-[env(safe-area-inset-bottom)] text-slate-100 shadow-[0_-20px_60px_rgba(0,0,0,0.5)]">
+      <button type="button" aria-label={messages.closeSheet} onClick={onClose} className={skin.overlay} />
+      <div className={skin.panel}>
         {/* 顶部拖拽指示条 */}
         <div className="flex items-center justify-center pt-2">
           <span className="h-1 w-10 rounded-full bg-slate-600/80" aria-hidden />
@@ -90,12 +89,7 @@ export function MobileStockSheet({
               <p className="mt-1 text-[13px] text-slate-400">{messages.mobileTapHint}</p>
             )}
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label={messages.closeSheet}
-            className="inline-flex size-9 shrink-0 items-center justify-center rounded-full border border-slate-700/80 bg-slate-800/60 text-slate-200 transition-colors hover:bg-slate-700/80"
-          >
+          <button type="button" onClick={onClose} aria-label={messages.closeSheet} className={skin.closeButton}>
             <X className="size-4" />
           </button>
         </div>
@@ -103,7 +97,7 @@ export function MobileStockSheet({
         {/* 日线 K 线图 + 雪球跳转按钮 */}
         {stock && (
           <>
-            <div className="mx-4 mb-3 overflow-hidden rounded-md border border-slate-700/80 bg-white">
+            <div className={skin.klineFrame}>
               <img
                 src={getDailyKlineUrl(stock.code)}
                 alt={`${stock.name} K-line`}
@@ -116,11 +110,7 @@ export function MobileStockSheet({
             </div>
 
             <div className="flex items-center justify-between gap-2 px-4 pb-3">
-              <button
-                type="button"
-                onClick={() => onOpenXueqiu(stock.code)}
-                className="inline-flex flex-1 items-center justify-center gap-2 rounded-md border border-slate-600 bg-slate-800/70 px-3 py-2 text-[13px] font-medium text-slate-100 transition-colors hover:bg-slate-700/80"
-              >
+              <button type="button" onClick={() => onOpenXueqiu(stock.code)} className={skin.xueqiuButton}>
                 <ExternalLink className="size-3.5" />
                 {messages.mobileOpenInXueqiu}
               </button>
@@ -130,7 +120,7 @@ export function MobileStockSheet({
 
         {/* 同板块个股列表，点击可切换查看 */}
         {stocks.length > 0 && (
-          <div className="flex min-h-0 flex-1 flex-col border-t border-slate-700/80 bg-[#0b0e13]">
+          <div className={skin.listSection}>
             <div className="flex items-center justify-between px-4 py-2 text-[11px] font-medium uppercase tracking-[0.08em] text-slate-400">
               <span>{title ?? ""}</span>
               <span className="tabular-nums">{stocks.length}</span>
@@ -144,8 +134,8 @@ export function MobileStockSheet({
                     key={item.code}
                     onClick={() => onSelectStock(item.code)}
                     className={cn(
-                      "flex w-full items-center gap-3 border-b border-slate-800/80 px-4 py-2.5 text-left text-[13px] transition-colors",
-                      isActive ? "bg-slate-800/70" : "hover:bg-slate-800/40"
+                      skin.listRowBase,
+                      isActive ? skin.listRowActive : skin.listRowInactive
                     )}
                   >
                     <span

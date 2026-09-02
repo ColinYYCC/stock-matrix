@@ -11,12 +11,7 @@ import {
 } from "react";
 import {
   Loader2,
-  Moon,
-  Palette,
-  Sun,
   X,
-  ExternalLink,
-  Info,
   PanelLeftOpen,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -54,12 +49,8 @@ import {
   type MarketOverviewResponse,
   type ViewState,
 } from "@/types/heatmap";
-import { Sidebar as SidebarIOS26 } from "@/components/ios26/sidebar";
-import { Inspector as InspectorIOS26 } from "@/components/ios26/inspector";
-import { MobileStockSheet as MobileStockSheetIOS26 } from "@/components/ios26/mobile-stock-sheet";
-import { ColorLegend as ColorLegendIOS26 } from "@/components/ios26/color-legend";
-import { SettingsDrawer as SettingsDrawerIOS26 } from "@/components/ios26/settings-drawer";
-import { useDesignStyle, type DesignStyle } from "@/hooks/use-design-style";
+import { SettingsDrawer, type SettingsTab } from "@/components/settings-drawer";
+import { useDesignStyle } from "@/hooks/use-design-style";
 
 // ============ 常量 ============
 
@@ -82,9 +73,6 @@ const themeColors: Record<ThemeColorKey, { swatch: string; foreground: string }>
   blue: { swatch: "#38bdf8", foreground: "#031018" },
   violet: { swatch: "#a78bfa", foreground: "#13091f" },
 };
-
-/** 设置面板的标签页类型 */
-type SettingsTab = "appearance" | "help" | "project";
 
 /** 市场摘要信息 */
 type MarketSummary = {
@@ -183,244 +171,6 @@ function HeatmapLoadingOverlay({ displayMode, locale }: { displayMode: DisplayMo
   );
 }
 
-// ============ 设置面板 ============
-
-/** 设置面板组件 */
-function SettingsDrawer({
-  open,
-  tab,
-  messages,
-  displayMode,
-  priceColorMode,
-  designStyle,
-  areaTipMessage,
-  onClose,
-  onTabChange,
-  onDisplayModeChange,
-  onPriceColorModeChange,
-  onDesignStyleChange,
-}: {
-  open: boolean;
-  tab: SettingsTab;
-  messages: HeatmapMessages;
-  displayMode: DisplayMode;
-  priceColorMode: PriceColorMode;
-  designStyle: DesignStyle;
-  areaTipMessage: string;
-  onClose: () => void;
-  onTabChange: (tab: SettingsTab) => void;
-  onDisplayModeChange: (mode: DisplayMode) => void;
-  onPriceColorModeChange: (mode: PriceColorMode) => void;
-  onDesignStyleChange: (style: DesignStyle) => void;
-}) {
-  if (!open) return null;
-
-  const tabs: Array<{ key: SettingsTab; label: string; icon: typeof Palette }> = [
-    { key: "appearance", label: messages.settingsAppearance, icon: Palette },
-    { key: "help", label: messages.settingsHelp, icon: Info },
-    { key: "project", label: messages.settingsProject, icon: ExternalLink },
-  ];
-  const helpItems = [
-    areaTipMessage,
-    messages.tipColor,
-    messages.tipDoubleClick,
-    messages.tipZoom,
-    messages.tipDrag,
-    messages.tipInspectorScroll,
-    messages.tipFullscreen,
-  ];
-
-  return (
-    <div className="absolute inset-0 z-[10010] flex items-end justify-center bg-black/62 backdrop-blur-sm" role="dialog" aria-modal="true">
-      <button type="button" className="absolute inset-0" aria-label={messages.closeSheet} onClick={onClose} />
-      <section className="relative flex h-[82dvh] w-full flex-col overflow-hidden rounded-t-lg border border-b-0 border-border bg-card pb-[env(safe-area-inset-bottom)] text-card-foreground shadow-[0_-24px_100px_rgba(0,0,0,0.48)]">
-        <div className="flex items-center justify-center pt-2">
-          <span className="h-1 w-10 rounded-full bg-muted-foreground/40" aria-hidden />
-        </div>
-        <header className="flex items-start justify-between gap-3 border-b border-border px-4 py-3">
-          <div className="min-w-0">
-            <h2 className="text-lg font-semibold leading-tight">{messages.settingsTitle}</h2>
-            <p className="mt-1 text-xs leading-relaxed text-muted-foreground">{messages.settingsDescription}</p>
-          </div>
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label={messages.closeSheet}
-            className="inline-flex size-9 shrink-0 items-center justify-center border border-border bg-background/70 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-          >
-            <X className="size-4" />
-          </button>
-        </header>
-
-        <div className="grid min-h-0 flex-1 grid-rows-[48px_minmax(0,1fr)] md:grid-cols-[168px_minmax(0,1fr)] md:grid-rows-1">
-          <nav className="flex h-12 min-h-12 gap-1 overflow-x-auto overflow-y-hidden border-b border-border bg-muted/20 px-2 py-1.5 md:h-auto md:min-h-0 md:flex-col md:overflow-x-visible md:border-b-0 md:border-r md:p-2">
-            {tabs.map((item) => {
-              const Icon = item.icon;
-              const active = tab === item.key;
-              return (
-                <button
-                  key={item.key}
-                  type="button"
-                  onClick={() => onTabChange(item.key)}
-                  className={cn(
-                    "inline-flex h-9 shrink-0 items-center gap-2 border px-3 text-left text-sm font-medium leading-none transition-colors md:w-full",
-                    active
-                      ? "border-brand/60 bg-brand/15 text-foreground"
-                      : "border-transparent text-muted-foreground hover:border-border hover:bg-background/70 hover:text-foreground"
-                  )}
-                >
-                  <Icon className="size-4 shrink-0" />
-                  <span className="whitespace-nowrap">{item.label}</span>
-                </button>
-              );
-            })}
-          </nav>
-
-          <div className="min-h-0 overflow-y-auto p-4">
-            {tab === "appearance" && (
-              <div className="space-y-6">
-                {/* 界面风格切换：iOS 26 液态玻璃 / 经典 */}
-                <section>
-                  <h3 className="text-sm font-semibold">{messages.designStyleLabel}</h3>
-                  <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
-                    {messages.designStyleDescription}
-                  </p>
-                  <div className="mt-3 grid gap-2 sm:grid-cols-2">
-                    <button
-                      type="button"
-                      onClick={() => onDesignStyleChange("ios26")}
-                      aria-pressed={designStyle === "ios26"}
-                      className={cn(
-                        "flex items-center gap-2 border px-3 py-3 text-left text-sm font-semibold transition-colors",
-                        designStyle === "ios26"
-                          ? "border-brand/70 bg-brand/15 text-foreground"
-                          : "border-border bg-background/70 text-muted-foreground hover:bg-muted hover:text-foreground"
-                      )}
-                    >
-                      <span className="size-2.5 rounded-full bg-gradient-to-br from-cyan-400 to-purple-500" />
-                      {messages.designStyleIOS26}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => onDesignStyleChange("classic")}
-                      aria-pressed={designStyle === "classic"}
-                      className={cn(
-                        "flex items-center gap-2 border px-3 py-3 text-left text-sm font-semibold transition-colors",
-                        designStyle === "classic"
-                          ? "border-brand/70 bg-brand/15 text-foreground"
-                          : "border-border bg-background/70 text-muted-foreground hover:bg-muted hover:text-foreground"
-                      )}
-                    >
-                      <span className="size-2.5 rounded-full bg-slate-500" />
-                      {messages.designStyleClassic}
-                    </button>
-                  </div>
-                </section>
-
-                <section>
-                  <h3 className="text-sm font-semibold">{messages.displayMode}</h3>
-                  <div className="mt-3 grid gap-2 sm:grid-cols-2">
-                    <button
-                      type="button"
-                      onClick={() => onDisplayModeChange("light")}
-                      aria-pressed={displayMode === "light"}
-                      className={cn(
-                        "flex items-center gap-2 border px-3 py-3 text-left text-sm font-semibold transition-colors",
-                        displayMode === "light"
-                          ? "border-brand/70 bg-brand/15 text-foreground"
-                          : "border-border bg-background/70 text-muted-foreground hover:bg-muted hover:text-foreground"
-                      )}
-                    >
-                      <Sun className="size-4 shrink-0" />
-                      {messages.lightMode}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => onDisplayModeChange("dark")}
-                      aria-pressed={displayMode === "dark"}
-                      className={cn(
-                        "flex items-center gap-2 border px-3 py-3 text-left text-sm font-semibold transition-colors",
-                        displayMode === "dark"
-                          ? "border-brand/70 bg-brand/15 text-foreground"
-                          : "border-border bg-background/70 text-muted-foreground hover:bg-muted hover:text-foreground"
-                      )}
-                    >
-                      <Moon className="size-4 shrink-0" />
-                      {messages.darkMode}
-                    </button>
-                  </div>
-                </section>
-
-                <section>
-                  <h3 className="text-sm font-semibold">{messages.priceColor}</h3>
-                  <div className="mt-3 grid gap-2 sm:grid-cols-2">
-                    <button
-                      type="button"
-                      onClick={() => onPriceColorModeChange("red-rise")}
-                      aria-pressed={priceColorMode === "red-rise"}
-                      className={cn(
-                        "border px-3 py-3 text-left text-sm transition-colors",
-                        priceColorMode === "red-rise"
-                          ? "border-brand/70 bg-brand/15"
-                          : "border-border bg-background/70 hover:bg-muted"
-                      )}
-                    >
-                      <span className="font-semibold text-red-400">{messages.redRiseGreenFall}</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => onPriceColorModeChange("green-rise")}
-                      aria-pressed={priceColorMode === "green-rise"}
-                      className={cn(
-                        "border px-3 py-3 text-left text-sm transition-colors",
-                        priceColorMode === "green-rise"
-                          ? "border-brand/70 bg-brand/15"
-                          : "border-border bg-background/70 hover:bg-muted"
-                      )}
-                    >
-                      <span className="font-semibold text-emerald-400">{messages.greenRiseRedFall}</span>
-                    </button>
-                  </div>
-                </section>
-              </div>
-            )}
-
-            {tab === "help" && (
-              <section>
-                <h3 className="text-sm font-semibold">{messages.helpTitle}</h3>
-                <p className="mt-2 text-sm leading-relaxed text-muted-foreground">{messages.helpIntro}</p>
-                <div className="mt-4 space-y-2">
-                  {helpItems.map((item) => (
-                    <div key={item} className="border border-border bg-background/70 px-3 py-2 text-sm text-muted-foreground">
-                      {item.replace(/^·\s*/, "")}
-                    </div>
-                  ))}
-                </div>
-              </section>
-            )}
-
-            {tab === "project" && (
-              <section>
-                <h3 className="text-sm font-semibold">{messages.githubProject}</h3>
-                <p className="mt-2 text-sm leading-relaxed text-muted-foreground">{messages.githubProjectDescription}</p>
-                <a
-                  href="https://github.com/ColinYYCC/stock-matrix"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="mt-4 inline-flex items-center gap-2 border border-border bg-background/80 px-3 py-2 text-sm font-semibold text-foreground transition-colors hover:bg-muted"
-                >
-                  <ExternalLink className="size-4" />
-                  github.com/ColinYYCC/stock-matrix
-                </a>
-              </section>
-            )}
-          </div>
-        </div>
-      </section>
-    </div>
-  );
-}
-
 // ============ 主组件 ============
 
 /**
@@ -485,11 +235,6 @@ export function MarketHeatmap({ locale: initialLocale }: { locale: Locale; messa
   const isLightMode = displayMode === "light";
   const isIOS26 = designStyle === "ios26";
   const isMobile = useIsMobile();
-  // 根据界面风格选择渲染原版还是 iOS 26 版组件
-  const SidebarComponent = isIOS26 ? SidebarIOS26 : Sidebar;
-  const InspectorComponent = isIOS26 ? InspectorIOS26 : Inspector;
-  const ColorLegendComponent = isIOS26 ? ColorLegendIOS26 : ColorLegend;
-  const MobileStockSheetComponent = isIOS26 ? MobileStockSheetIOS26 : MobileStockSheet;
   const heatmapCanvasTheme = heatmapCanvasThemes[displayMode];
   const brandStyle = useMemo(
     () =>
@@ -1671,11 +1416,12 @@ export function MarketHeatmap({ locale: initialLocale }: { locale: Locale; messa
             : "grid-cols-[1fr] grid-rows-[minmax(0,1fr)_auto] md:grid-cols-[148px_minmax(0,1fr)] lg:grid-cols-[162px_minmax(0,1fr)]"
         )}
       >
-        <SidebarComponent
+        <Sidebar
           messages={messages}
           locale={locale}
           market={market}
           period={period}
+          designStyle={designStyle}
           boardFilter={boardFilter}
           trendFilter={trendFilter}
           priceColorMode={priceColorMode}
@@ -1702,7 +1448,8 @@ export function MarketHeatmap({ locale: initialLocale }: { locale: Locale; messa
         <div
           className={cn(
             "relative min-h-0 overflow-hidden",
-            isIOS26 && !isFullscreen ? "rounded-3xl border border-[var(--ios26-glass-border)]" : "",
+            // 圆角与画布内板块的圆角（10px）一致：贴边板块的角才不会被容器的大弧咬掉
+            isIOS26 && !isFullscreen ? "rounded-[10px] border border-[var(--ios26-glass-border)]" : "",
             isIOS26 ? "" : isLightMode ? "bg-gradient-to-br from-slate-100 to-slate-200" : "bg-gradient-to-br from-[#1a1722] to-[#0f0d16]",
             isFullscreen ? "col-start-1 h-full" : "col-start-1 row-start-1 md:col-start-2"
           )}
@@ -1756,7 +1503,7 @@ export function MarketHeatmap({ locale: initialLocale }: { locale: Locale; messa
             />
 
             {/* 悬浮详情面板 */}
-            <InspectorComponent
+            <Inspector
               ref={inspectorListRef}
               style={inspectorStyle}
               title={activeInspectorTitle}
@@ -1764,6 +1511,7 @@ export function MarketHeatmap({ locale: initialLocale }: { locale: Locale; messa
               stocks={inspectorStocks}
               messages={messages}
               priceColorMode={priceColorMode}
+              designStyle={designStyle}
               listMaxHeight={inspectorListMaxHeight}
             />
 
@@ -1779,9 +1527,10 @@ export function MarketHeatmap({ locale: initialLocale }: { locale: Locale; messa
 
         {/* 底部图例 */}
         {!isFullscreen && (
-          <ColorLegendComponent
+          <ColorLegend
             messages={messages}
             priceColorMode={priceColorMode}
+            designStyle={designStyle}
             isLightMode={isLightMode}
             areaTipMessage={areaTipMessage}
             isMobile={isMobile}
@@ -1795,38 +1544,34 @@ export function MarketHeatmap({ locale: initialLocale }: { locale: Locale; messa
 
       {/* 移动端个股详情面板：点击色块后从底部弹出 */}
       {isMobile && selectedBoardName && (
-        <MobileStockSheetComponent
+        <MobileStockSheet
           title={activeInspectorTitle ?? selectedBoardName}
           stock={activeInspectorStock}
           stocks={inspectorStocks}
           messages={messages}
           priceColorMode={priceColorMode}
+          designStyle={designStyle}
           onClose={closeMobileSheet}
           onSelectStock={setSelectedStockCode}
           onOpenXueqiu={openXueqiuForStock}
         />
       )}
 
-      {/* 设置面板：iOS 26 风格和经典风格各自有独立组件 */}
-      {(() => {
-        const SettingsDrawerComponent = isIOS26 ? SettingsDrawerIOS26 : SettingsDrawer;
-        return (
-          <SettingsDrawerComponent
-            open={settingsOpen}
-            tab={settingsTab}
-            messages={messages}
-            displayMode={displayMode}
-            priceColorMode={priceColorMode}
-            designStyle={designStyle}
-            areaTipMessage={areaTipMessage}
-            onClose={() => setSettingsOpen(false)}
-            onTabChange={setSettingsTab}
-            onDisplayModeChange={setDisplayMode}
-            onPriceColorModeChange={setPriceColorMode}
-            onDesignStyleChange={setDesignStyle}
-          />
-        );
-      })()}
+      {/* 设置面板 */}
+      <SettingsDrawer
+        open={settingsOpen}
+        tab={settingsTab}
+        messages={messages}
+        displayMode={displayMode}
+        priceColorMode={priceColorMode}
+        designStyle={designStyle}
+        areaTipMessage={areaTipMessage}
+        onClose={() => setSettingsOpen(false)}
+        onTabChange={setSettingsTab}
+        onDisplayModeChange={setDisplayMode}
+        onPriceColorModeChange={setPriceColorMode}
+        onDesignStyleChange={setDesignStyle}
+      />
     </div>
   );
 }
