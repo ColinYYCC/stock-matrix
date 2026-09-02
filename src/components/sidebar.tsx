@@ -234,7 +234,7 @@ export function Sidebar({
                 }}
               />
               <span className={cn(
-                "font-semibold text-[9px]",
+                "font-semibold text-[10px]",
                 isTrading ? "text-foreground" : "text-muted-foreground"
               )}>
                 {isTrading ? messages.marketOpen : messages.marketClosed}
@@ -351,7 +351,7 @@ export function Sidebar({
               <p className="font-semibold uppercase tracking-[0.12em] text-muted-foreground text-[10px]">
                 {messages.metricLabel}
               </p>
-              <span className="shrink-0 text-right font-semibold tabular-nums text-foreground text-[10.5px]">
+              <span className="shrink-0 text-right font-semibold tabular-nums text-foreground text-[11px]">
                 {getPeriodLabel(period, messages)}
               </span>
             </div>

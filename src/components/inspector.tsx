@@ -130,7 +130,7 @@ export const Inspector = forwardRef<HTMLDivElement, InspectorProps>(function Ins
             </p>
             <div className="mt-2.5 grid grid-cols-[minmax(0,1fr)_94px] items-end gap-3">
               <div className="min-w-0">
-                <p className="text-[19px] font-bold leading-[1.08] text-white [word-break:keep-all]">
+                <p className="text-[18px] font-bold leading-[1.08] text-white [word-break:keep-all]">
                   {stock.name}
                 </p>
                 <img
@@ -144,7 +144,7 @@ export const Inspector = forwardRef<HTMLDivElement, InspectorProps>(function Ins
                 />
               </div>
               <div className="text-right">
-                <p className="text-[15px] font-medium tabular-nums text-white/90">
+                <p className="text-[14px] font-medium tabular-nums text-white/90">
                   {formatPrice(stock.price)}
                 </p>
                 <p

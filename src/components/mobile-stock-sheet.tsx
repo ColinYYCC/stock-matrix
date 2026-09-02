@@ -77,7 +77,7 @@ export function MobileStockSheet({
                   <span className="text-[20px] font-semibold text-white">{formatPrice(stock.price)}</span>
                   <span
                     className={cn(
-                      "text-[15px] font-semibold",
+                      "text-[14px] font-semibold",
                       getChangeTextClass(stock.changePct, priceColorMode)
                     )}
                   >

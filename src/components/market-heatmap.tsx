@@ -165,7 +165,7 @@ function HeatmapLoadingOverlay({ displayMode, locale }: { displayMode: DisplayMo
     >
       <div className="flex items-center gap-3">
         <Loader2 className="size-5 shrink-0 animate-spin text-brand" aria-hidden />
-        <span className="text-[15px] font-semibold tracking-tight sm:text-base">{messages.loading}</span>
+        <span className="text-[14px] font-semibold tracking-tight sm:text-base">{messages.loading}</span>
       </div>
     </div>
   );

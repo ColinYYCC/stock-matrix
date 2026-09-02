@@ -190,7 +190,7 @@ export const skins: Record<DesignStyle, Skin> = {
       subBoardChip: "mt-1 flex items-center justify-between border border-brand/40 bg-brand/10 px-1.5 py-1",
       trendSegment: "mt-1 grid grid-cols-3 gap-1",
       trendButtonBase:
-        "h-11 md:h-7 border px-1 text-center font-semibold leading-tight transition-colors text-[10.5px]",
+        "h-11 md:h-7 border px-1 text-center font-semibold leading-tight transition-colors text-[11px]",
       trendButtonActive: "border-brand/70 bg-brand/18 text-foreground",
       trendButtonInactive: "border-border bg-background/80 text-muted-foreground hover:bg-muted hover:text-foreground",
       periodSegment: "mt-1 grid grid-cols-4 gap-1",
@@ -293,7 +293,7 @@ export const skins: Record<DesignStyle, Skin> = {
       subBoardChip: "ios26-glass-hover mt-1 flex items-center justify-between rounded-[9px] border-none px-2 py-1",
       trendSegment: "ios26-glass-segmented mt-1 grid grid-cols-3 gap-0.5 rounded-[9px] p-0.5",
       trendButtonBase:
-        "ios26-glass-hover h-11 rounded-[7px] border-none px-1 text-center font-semibold leading-tight text-[10.5px] md:h-7",
+        "ios26-glass-hover h-11 rounded-[7px] border-none px-1 text-center font-semibold leading-tight text-[11px] md:h-7",
       trendButtonActive: "ios26-glass-active text-foreground",
       trendButtonInactive: "text-muted-foreground hover:text-foreground",
       periodSegment: "ios26-glass-segmented mt-1 grid grid-cols-4 gap-0.5 rounded-[9px] p-0.5",
