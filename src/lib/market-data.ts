@@ -755,8 +755,9 @@ async function fetchQuotesFromRemote(stocks: StockSnapshot[]): Promise<QuoteSnap
       quotes: eastmoneyQuotes,
       source: "direct",
     };
-  } catch {
-    // 东方财富失败，降级到新浪
+  } catch (error) {
+    // 东方财富失败，降级到新浪（审计 Q1：明报降级原因）
+    console.warn("Eastmoney 行情拉取失败，降级到新浪:", error);
   }
 
   // 新浪降级：仅当日涨跌幅

@@ -40,11 +40,10 @@ export async function GET(request: NextRequest) {
     response.headers.set("Cache-Control", "public, s-maxage=8, stale-while-revalidate=300");
     return response;
   } catch (error) {
+    // 审计 S1：对外只回固定文案，详细错误只进服务端日志，避免泄露上游内部细节
+    console.error("[api/heatmap/treemap] 数据加载失败:", error);
     return NextResponse.json(
-      {
-        success: false,
-        message: error instanceof Error ? error.message : "Failed to load treemap data",
-      },
+      { success: false, message: "Failed to load treemap data" },
       { status: 502 }
     );
   }

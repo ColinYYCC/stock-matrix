@@ -354,6 +354,22 @@ def _safe_float(val):
         return 0.0
 
 
+def clean_name(raw_name: str) -> str:
+    """清理股票名称：全角 ASCII（！～ 区段，含全角字母/数字）转半角、全角空格与连续空格归一。
+
+    审计 Q3：与 src/lib/stock-discovery.ts 的 cleanName 保持同一逻辑
+    （原实现只转换了 ＡＢ 两个字母，此处补全整个区段）。
+    """
+    cleaned = "".join(
+        chr(ord(ch) - 0xFEE0) if 0xFF01 <= ord(ch) <= 0xFF5E else ch
+        for ch in raw_name
+    )
+    cleaned = cleaned.replace("\u3000", " ")
+    while "  " in cleaned:
+        cleaned = cleaned.replace("  ", " ")
+    return cleaned.strip()
+
+
 def parse_clist_stocks(payloads):
     """解析 clist 返回的 JSON，提取股票列表（含纯行业分类）"""
     stocks = []
@@ -391,11 +407,7 @@ def parse_clist_stocks(payloads):
             change_pct = _safe_float(row.get("f3"))
             total_cap = _safe_float(row.get("f20"))
             float_cap = _safe_float(row.get("f21"))
-            name = str(row.get("f14", "")).strip()
-            name = name.replace("\uFF21", "A").replace("\uFF22", "B").replace("\u3000", " ")
-            while "  " in name:
-                name = name.replace("  ", " ")
-            name = name.strip()
+            name = clean_name(str(row.get("f14", "")).strip())
             raw_industry = str(row.get("f100", "")).strip()
 
             if price <= 0:
@@ -506,11 +518,7 @@ def fetch_stock_detail(code):
             resp = urlopen(req, timeout=EASTMONEY_TIMEOUT)
             data = json.loads(resp.read().decode("utf-8"))
             d = data.get("data") or {}
-            name = str(d.get("f58", "")).strip()
-            name = name.replace("\uFF21", "A").replace("\uFF22", "B").replace("\u3000", " ")
-            while "  " in name:
-                name = name.replace("  ", " ")
-            name = name.strip()
+            name = clean_name(str(d.get("f58", "")).strip())
             price = d.get("f43")
             status = d.get("f152", -1)
             if not name:

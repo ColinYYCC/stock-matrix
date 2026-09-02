@@ -391,7 +391,9 @@ export function MarketHeatmap({ locale }: { locale: Locale }) {
           await fetchTreemap(market, period);
           lastError = false;
           break;
-        } catch {
+        } catch (error) {
+          // 审计 Q1：明报失败原因，不再静默吞掉
+          console.warn("treemap 加载失败:", error);
           lastError = true;
           if (attempt < maxRetries && !cancelled) {
             await new Promise((r) => setTimeout(r, baseDelay * Math.pow(2, attempt)));
@@ -429,8 +431,8 @@ export function MarketHeatmap({ locale }: { locale: Locale }) {
         setUpdatedAt(payload.updatedAt);
         updatedAtRef.current = payload.updatedAt;
         setError(null);
-      } catch {
-        /* 保持现有 treemapData */
+      } catch (error) {
+        console.warn("treemap 轮询失败，保留现有数据:", error);
       }
     }, [market, period]),
     pollInterval,
@@ -438,7 +440,7 @@ export function MarketHeatmap({ locale }: { locale: Locale }) {
 
   usePollWhileVisible(
     useCallback(async () => {
-      try { await fetchMarketSummaries(period); if (treemapDataRef.current) setError(null); } catch { /* 保持现有数据 */ }
+      try { await fetchMarketSummaries(period); if (treemapDataRef.current) setError(null); } catch (error) { console.warn("概览轮询失败，保留现有数据:", error); }
     }, [fetchMarketSummaries, period]),
     pollInterval,
   );
@@ -1255,7 +1257,8 @@ export function MarketHeatmap({ locale }: { locale: Locale }) {
       anchor.href = url;
       anchor.download = filename;
       anchor.click();
-      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      // 审计 Q2：慢设备上 1s 就 revoke 可能导致下载尚未开始就被撤销，放宽到 10s
+      setTimeout(() => URL.revokeObjectURL(url), 10_000);
     } catch {
       toast.error(messages.shareFailed, { id: "matrix-share-generate", duration: 3200 });
     } finally {

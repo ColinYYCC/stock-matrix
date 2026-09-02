@@ -35,7 +35,8 @@ export type StockSnapshot = {
 // ============ 申万二级行业 → 大板块映射表 ============
 // 与 fetch_stocks.py 中 INDUSTRY_TO_BOARD 完全一致
 
-const INDUSTRY_TO_BOARD: Record<string, string> = {
+/** 导出供分类对账测试使用（防止与 scripts/fetch_stocks.py 的同名词表漂移） */
+export const INDUSTRY_TO_BOARD: Record<string, string> = {
   // ===== 金融 (8) =====
   国有大型银行: "金融", 股份制银行: "金融", 城商行: "金融",
   农商行: "金融", 证券: "金融", 保险: "金融", 多元金融: "金融",
@@ -158,7 +159,7 @@ const INDUSTRY_TO_BOARD: Record<string, string> = {
 // ============ 个别公司特殊处理白名单 ============
 // 与 fetch_stocks.py 中 STOCK_OVERRIDE 完全一致
 
-const STOCK_OVERRIDE: Record<string, string> = {
+export const STOCK_OVERRIDE: Record<string, string> = {
   // === 家电零部件 → 汽车（主营汽车热管理/汽车零部件）===
   "002050.SZ": "汽车",  // 三花智控
   "000404.SZ": "消费零售",  // 长虹华意
@@ -196,7 +197,7 @@ const STOCK_OVERRIDE: Record<string, string> = {
 // 把机器人公司从「自动化设备」拆成独立子板块（大板块仍属机械装备）
 // 覆盖 subBoardName，不影响 boardName
 
-const ROBOT_STOCKS: Record<string, string> = {
+export const ROBOT_STOCKS: Record<string, string> = {
   // === 人形/四足/整机 ===
   "688836.SH": "机器人",   // 宇树科技
   "002747.SZ": "机器人",   // 埃斯顿
@@ -280,12 +281,17 @@ function safeNumber(value: unknown): number {
   return 0;
 }
 
-/** 清理股票名称：全角转半角、去多余空格 */
+/**
+ * 清理股票名称：全角 ASCII（！～ 区段，含全角字母/数字）转半角、
+ * 全角空格与连续空格归一（审计 Q3：原实现只转换了 ＡＢ 两个字母，此处补全整个区段）
+ */
 function cleanName(raw: string): string {
-  let name = raw
-    .replace("\uFF21", "A")
-    .replace("\uFF22", "B")
-    .replace("\u3000", " ");
+  let name = "";
+  for (const char of raw) {
+    const code = char.charCodeAt(0);
+    name += code >= 0xff01 && code <= 0xff5e ? String.fromCharCode(code - 0xfee0) : char;
+  }
+  name = name.replace(/\u3000/g, " ");
   while (name.includes("  ")) {
     name = name.replace("  ", " ");
   }
