@@ -21,18 +21,18 @@ export function formatPrice(value: number) {
   return value.toFixed(value >= 100 ? 1 : 2);
 }
 
-/** 格式化涨跌幅：正数前面加 + 号，保留 2 位小数 */
+/** 格式化涨跌幅：正数前面加 + 号，保留 2 位小数；无数据（停牌等）显示 -- */
 export function formatChange(value: number) {
-  if (Number.isNaN(value)) return "--";
+  if (!Number.isFinite(value)) return "--";
   if (value > 0) {
     return `+${value.toFixed(2)}%`;
   }
   return `${value.toFixed(2)}%`;
 }
 
-/** 紧凑版涨跌幅：绝对值 >= 10 保留 1 位小数，否则 2 位，去掉末尾零 */
+/** 紧凑版涨跌幅：绝对值 >= 10 保留 1 位小数，否则 2 位，去掉末尾零；无数据（停牌等）显示 -- */
 export function formatCompactChange(value: number) {
-  if (Number.isNaN(value)) return "--";
+  if (!Number.isFinite(value)) return "--";
   const absValue = Math.abs(value);
   const digits = absValue >= 10 ? 1 : 2;
   const text = trimTrailingZeros(value.toFixed(digits));

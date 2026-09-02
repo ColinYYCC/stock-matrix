@@ -13,3 +13,11 @@
 - `src/components/ios26/` 目录在合并完成后删除（iOS 26 皮肤样式活在 token 表里，不再有独立组件文件）。
 - classic 版 SettingsDrawer 从 `market-heatmap.tsx` 内联实现抽出，`market-heatmap.tsx` 相应瘦身。
 - 新增皮肤 = 在 token 表加一列，而不是复制全套组件。
+
+## 例外：Canvas 画布配色不进 skin token 表
+
+画布（`src/lib/canvas-render.ts` 的 `heatmapCanvasThemes`）的暗色背景配色**刻意不收敛进 `skin.ts`**，维持独立维护：
+
+- 画布是命令式 RGB 绘制（渐变 + 半透明色块），与组件 DOM 的 className 皮肤本质不同，强行映射成 className token 不自然。
+- 画布在离屏缓存 / SSR 环境绘制，不便读取 `globals.css` 的 CSS 变量，硬编码 sRGB 字符串是务实选择。
+- 因此 `heatmapCanvasThemes` 是 skin token 表的有意例外，按 `皮肤 × 显示模式` 组织在 `canvas-render.ts` 内（相关决策见 P1-12：两套画布暗色各自对齐对应皮肤的页面背景，classic 去紫、ios26 对齐 `--ios26-bg-start/end`）。

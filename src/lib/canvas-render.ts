@@ -68,14 +68,21 @@ const lightCanvasTheme: HeatmapCanvasTheme = {
 
 /**
  * Canvas 主题配色表，按 皮肤 × 显示模式 取值（设计审查 P1-12）。
- * ios26 暗色背景用 #0a0e1a → #131826，与 globals.css 的 --ios26-bg-start/end
- * 完全一致，修复"canvas 与页面背景色温不一致"；classic 保持原紫色底不变。
+ *
+ * 两套画布暗色背景各自对齐对应皮肤的页面背景，消除"canvas 与页面背景色温不一致"：
+ * - ios26 暗色 #0a0e1a → #131826，与 globals.css 的 --ios26-bg-start/end 一致；
+ * - classic 暗色 #11141b → #0b0d12，是 classic 页面 --background(oklch(0.17 0.013 255))
+ *   的等效 sRGB，去除了原先的紫调，与页面同色温。
+ *
+ * 架构说明（P2-20 决策）：本表刻意不进 src/components/skin.ts 的 className token 表。
+ * 画布是命令式 RGB 绘制（离屏/SSR 环境不便读 CSS 变量），与组件 DOM className 皮肤
+ * 本质不同，故作为 skin token 表的有意例外，集中在 canvas-render.ts 内维护。
  */
 export const heatmapCanvasThemes: Record<DesignStyle, Record<DisplayMode, HeatmapCanvasTheme>> = {
   classic: {
     dark: {
-      backgroundStart: "#1d1a27",
-      backgroundEnd: "#13101c",
+      backgroundStart: "#11141b",
+      backgroundEnd: "#0b0d12",
       boardFill: "rgba(30, 35, 46, 0.75)",
       subBoardFill: "rgba(22, 27, 38, 0.45)",
       subBoardBorder: "rgba(180, 190, 210, 0.18)",
