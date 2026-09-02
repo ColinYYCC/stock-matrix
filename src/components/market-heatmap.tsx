@@ -35,6 +35,8 @@ import {
   MAX_ZOOM,
 } from "@/hooks/use-canvas-interaction";
 import {
+  isHeatmapPeriodKey,
+  isMarketKey,
   type BoardRect,
   type DisplayMode,
   type HeatmapPeriodKey,
@@ -289,6 +291,44 @@ export function MarketHeatmap({ locale: initialLocale }: { locale: Locale; messa
     if (!preferencesReady) return;
     try { window.localStorage.setItem("stock-matrix-price-color", priceColorMode); } catch { /* 可选 */ }
   }, [preferencesReady, priceColorMode]);
+
+  // ============ URL 状态同步（P1-9：分享链接 / 刷新后保持视图） ============
+  // 视图状态（市场/周期/板块/子板块/涨跌筛选）进 URL；显示模式等设备偏好仍走 localStorage。
+  const [urlReady, setUrlReady] = useState(false);
+
+  // 挂载后先从 URL 恢复视图状态；非法值直接忽略（板块值后续由失效保护 effect 校验）
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const urlMarket = params.get("market");
+    const urlPeriod = params.get("period");
+    const urlBoard = params.get("board");
+    const urlSubBoard = params.get("subBoard");
+    const urlTrend = params.get("trend");
+
+    if (typeof urlMarket === "string" && isMarketKey(urlMarket)) setMarket(urlMarket);
+    if (typeof urlPeriod === "string" && isHeatmapPeriodKey(urlPeriod)) setPeriod(urlPeriod);
+    if (urlBoard) setBoardFilter(urlBoard);
+    // 子板块只在指定了板块时才有意义，避免出现挂在"全部板块"下的无效筛选
+    if (urlBoard && urlSubBoard) setSubBoardFilter(urlSubBoard);
+    if (urlTrend === risingOnlyValue || urlTrend === fallingOnlyValue) setTrendFilter(urlTrend);
+
+    setUrlReady(true);
+  }, []);
+
+  // 视图状态变化时写回 URL；默认值不写入，保持 URL 干净。
+  // 用 replaceState：不产生历史记录、不触发 Next 导航。urlReady 门闩防止挂载时用
+  // 还原前的默认值把 URL 里的参数清掉。
+  useEffect(() => {
+    if (!urlReady) return;
+    const params = new URLSearchParams();
+    if (market !== "all") params.set("market", market);
+    if (period !== "day") params.set("period", period);
+    if (boardFilter !== allBoardsValue) params.set("board", boardFilter);
+    if (subBoardFilter) params.set("subBoard", subBoardFilter);
+    if (trendFilter !== allTrendsValue) params.set("trend", trendFilter);
+    const query = params.toString();
+    window.history.replaceState(null, "", query ? `?${query}` : window.location.pathname);
+  }, [urlReady, market, period, boardFilter, subBoardFilter, trendFilter]);
 
   // ============ 尺寸监听 ============
   const refreshSize = useCallback(() => {
