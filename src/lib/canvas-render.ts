@@ -9,6 +9,7 @@
  * - 绘制函数参数化，不依赖 React 生命周期
  */
 import type { BoardRect, DisplayMode, PriceColorMode, StockRect, SubBoardRect } from "@/types/heatmap";
+import type { DesignStyle } from "@/hooks/use-design-style";
 import { clamp, formatCompactChange, formatPrice } from "./format";
 import { getBoardHeaderColor, getHeatColor } from "./heatmap-color";
 
@@ -39,44 +40,65 @@ function getStockLabelColors(changePct: number, colorMode: PriceColorMode) {
   return { fill: "rgba(248, 250, 252, 0.94)", shadow: "rgba(0, 0, 0, 0.28)" };
 }
 
-/** Canvas 主题配色表 */
-export const heatmapCanvasThemes: Record<
-  DisplayMode,
-  {
-    backgroundStart: string;
-    backgroundEnd: string;
-    boardFill: string;
-    subBoardFill: string;
-    subBoardBorder: string;
-    activeSubBoardInner: string;
-    boardBorder: string;
-    highlightOuter: string;
-    highlightInner: string;
-  }
-> = {
-  dark: {
-    // iOS 26 Liquid Glass 风格：通透、微光、圆角
-    backgroundStart: "#1d1a27",
-    backgroundEnd: "#13101c",
-    boardFill: "rgba(30, 35, 46, 0.75)",
-    subBoardFill: "rgba(22, 27, 38, 0.45)",
-    subBoardBorder: "rgba(180, 190, 210, 0.18)",
-    activeSubBoardInner: "rgba(8, 47, 73, 0.72)",
-    boardBorder: "rgba(180, 190, 210, 0.22)",
-    highlightOuter: "rgba(2, 6, 23, 0.85)",
-    highlightInner: "rgba(248, 250, 252, 0.95)",
+/** Canvas 主题配色：单套配色 = 背景 + 板块底色 + 高亮描边 */
+export type HeatmapCanvasTheme = {
+  backgroundStart: string;
+  backgroundEnd: string;
+  boardFill: string;
+  subBoardFill: string;
+  subBoardBorder: string;
+  activeSubBoardInner: string;
+  boardBorder: string;
+  highlightOuter: string;
+  highlightInner: string;
+};
+
+/** 亮色配色两套皮肤共用：与 ios26 亮色页面背景（#eef1f6 系）同色温 */
+const lightCanvasTheme: HeatmapCanvasTheme = {
+  backgroundStart: "#f5f7fa",
+  backgroundEnd: "#eef1f6",
+  boardFill: "rgba(245, 248, 252, 0.78)",
+  subBoardFill: "rgba(255, 255, 255, 0.58)",
+  subBoardBorder: "rgba(140, 155, 180, 0.20)",
+  activeSubBoardInner: "rgba(14, 116, 144, 0.32)",
+  boardBorder: "rgba(140, 155, 180, 0.26)",
+  highlightOuter: "rgba(15, 23, 42, 0.70)",
+  highlightInner: "rgba(255, 255, 255, 0.95)",
+};
+
+/**
+ * Canvas 主题配色表，按 皮肤 × 显示模式 取值（设计审查 P1-12）。
+ * ios26 暗色背景用 #0a0e1a → #131826，与 globals.css 的 --ios26-bg-start/end
+ * 完全一致，修复"canvas 与页面背景色温不一致"；classic 保持原紫色底不变。
+ */
+export const heatmapCanvasThemes: Record<DesignStyle, Record<DisplayMode, HeatmapCanvasTheme>> = {
+  classic: {
+    dark: {
+      backgroundStart: "#1d1a27",
+      backgroundEnd: "#13101c",
+      boardFill: "rgba(30, 35, 46, 0.75)",
+      subBoardFill: "rgba(22, 27, 38, 0.45)",
+      subBoardBorder: "rgba(180, 190, 210, 0.18)",
+      activeSubBoardInner: "rgba(8, 47, 73, 0.72)",
+      boardBorder: "rgba(180, 190, 210, 0.22)",
+      highlightOuter: "rgba(2, 6, 23, 0.85)",
+      highlightInner: "rgba(248, 250, 252, 0.95)",
+    },
+    light: lightCanvasTheme,
   },
-  light: {
-    // iOS 26 Liquid Glass 风格（浅色模式）
-    backgroundStart: "#f5f7fa",
-    backgroundEnd: "#eef1f6",
-    boardFill: "rgba(245, 248, 252, 0.78)",
-    subBoardFill: "rgba(255, 255, 255, 0.58)",
-    subBoardBorder: "rgba(140, 155, 180, 0.20)",
-    activeSubBoardInner: "rgba(14, 116, 144, 0.32)",
-    boardBorder: "rgba(140, 155, 180, 0.26)",
-    highlightOuter: "rgba(15, 23, 42, 0.70)",
-    highlightInner: "rgba(255, 255, 255, 0.95)",
+  ios26: {
+    dark: {
+      backgroundStart: "#0a0e1a",
+      backgroundEnd: "#131826",
+      boardFill: "rgba(30, 35, 46, 0.75)",
+      subBoardFill: "rgba(22, 27, 38, 0.45)",
+      subBoardBorder: "rgba(180, 190, 210, 0.18)",
+      activeSubBoardInner: "rgba(8, 47, 73, 0.72)",
+      boardBorder: "rgba(180, 190, 210, 0.22)",
+      highlightOuter: "rgba(2, 6, 23, 0.85)",
+      highlightInner: "rgba(248, 250, 252, 0.95)",
+    },
+    light: lightCanvasTheme,
   },
 };
 
@@ -548,7 +570,7 @@ export type DrawHeatmapParams = {
   canvasHeight: number;
   pixelRatio: number;
   view: { scale: number; x: number; y: number };
-  theme: (typeof heatmapCanvasThemes)[DisplayMode];
+  theme: HeatmapCanvasTheme;
   priceColorMode: PriceColorMode;
   stockRects: StockRect[];
   boardRects: BoardRect[];
@@ -726,7 +748,7 @@ export type DrawHeatmapHighlightParams = {
   context: CanvasRenderingContext2D;
   pixelRatio: number;
   view: { scale: number; x: number; y: number };
-  theme: (typeof heatmapCanvasThemes)[DisplayMode];
+  theme: HeatmapCanvasTheme;
   highlightedStock: StockRect | null;
   activeBoardRect: BoardRect | null;
   activeSubBoardRect: SubBoardRect | null;

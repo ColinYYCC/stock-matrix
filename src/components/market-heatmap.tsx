@@ -235,7 +235,8 @@ export function MarketHeatmap({ locale: initialLocale }: { locale: Locale; messa
   const isLightMode = displayMode === "light";
   const isIOS26 = designStyle === "ios26";
   const isMobile = useIsMobile();
-  const heatmapCanvasTheme = heatmapCanvasThemes[displayMode];
+  // Canvas 配色跟皮肤走：ios26 暗色与页面背景同色温（P1-12），classic 保持原紫色底
+  const heatmapCanvasTheme = heatmapCanvasThemes[designStyle][displayMode];
   const brandStyle = useMemo(
     () =>
       ({
