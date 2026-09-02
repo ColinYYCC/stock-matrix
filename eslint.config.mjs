@@ -11,7 +11,8 @@ const eslintConfig = defineConfig([
       "react-hooks/set-state-in-effect": "off",
     },
   },
-  globalIgnores([".next/**", "out/**", "build/**", "next-env.d.ts"]),
+  // "**/._*"：排除外置硬盘产生的 macOS AppleDouble 元数据文件（不是源码）
+  globalIgnores([".next/**", "out/**", "build/**", "next-env.d.ts", "**/._*"]),
 ]);
 
 export default eslintConfig;
