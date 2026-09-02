@@ -15,6 +15,7 @@ import type { HeatmapMessages } from "@/lib/i18n";
 import { allBoardsValue, allTrendsValue, fallingOnlyValue, risingOnlyValue } from "@/types/heatmap";
 import type {
   HeatmapPeriodKey,
+  Locale,
   MarketKey,
   MarketOverview,
   MarketSummary,
@@ -83,7 +84,7 @@ function getTrendColor(trend: ReturnType<typeof getTurnoverTrend>, riseTextClass
 /** 侧边栏属性（classic / ios26 双皮肤共用，样式差异全部来自 skin.ts） */
 type SidebarProps = {
   messages: HeatmapMessages;
-  locale: "zh" | "en";
+  locale: Locale;
   market: MarketKey;
   period: HeatmapPeriodKey;
   boardFilter: string;

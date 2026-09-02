@@ -1,97 +1,12 @@
 /**
- * 中英文国际化字典
+ * 中文文案字典
  *
- * 支持中文 (zh) 和英文 (en) 两种语言，
- * 通过 localStorage 持久化用户选择。
+ * 审计 A3：界面当前仅中文，英文分支已删除（运行时从未渲染过）。
+ * 将来要多语言时：先在 types/heatmap.ts 放宽 Locale，再在这里加回语言分支。
  */
 import type { Locale } from "@/types/heatmap";
 
-export const locales = ["en", "zh"] as const;
-
-export const defaultLocale: Locale = "zh";
-
-export function isLocale(value: string): value is Locale {
-  return locales.includes(value as Locale);
-}
-
 export const messages = {
-  en: {
-    heatmap: {
-      title: "Stock Matrix",
-      boardFilterLabel: "Primary Sector",
-      allBoards: "All Sectors",
-      trendFilterLabel: "Trend Filter",
-      allTrends: "All",
-      risingOnly: "Rising Only",
-      fallingOnly: "Falling Only",
-      metricLabel: "Performance Window",
-      resetView: "Reset View",
-      enterFullscreen: "Fullscreen",
-      exitFullscreen: "Exit Fullscreen",
-      marketOpen: "Live",
-      marketClosed: "Closed",
-      legendRise: "Rising",
-      legendFlat: "Flat",
-      legendFall: "Falling",
-      loading: "Loading heatmap…",
-      errorLoad: "Unable to load heatmap data at the moment.",
-      canvasLabel: "Stock matrix canvas",
-      turnoverLabel: "Turnover",
-      comparedToYesterdayLabel: "Vs Yesterday",
-      turnoverIncreaseLabel: "Higher Volume",
-      turnoverDecreaseLabel: "Lower Volume",
-      turnoverFlatLabel: "Unchanged",
-      turnoverNoComparisonLabel: "N/A",
-      fallbackDataLabel: "Sample snapshot",
-      operationTipsTitle: "Tips",
-      tipAreaMarketCap: "· Block size reflects float market cap",
-      tipColor: "· Color intensity reflects price change",
-      tipDoubleClick: "· Double-click any stock to view it on Xueqiu; double-click a sector title to filter or reset",
-      tipTap: "· Tap any block for stock details",
-      tipZoom: "· Scroll wheel zooms in for detail",
-      tipPinch: "· Two-finger pinch to zoom",
-      tipDrag: "· After zooming, drag to move around",
-      tipInspectorScroll: "· While hovering, press ↑/↓ or J/K to scroll the detail list",
-      tipFullscreen: "· Fullscreen gives the best overview",
-      inspectorScrollHint: "↑/↓ or J/K to scroll the detail list",
-      shareImage: "Capture & Share",
-      generatingShareImage: "Generating…",
-      shareToApps: "Share",
-      shareFailed: "Unable to generate share image",
-      fullscreenToast: "Press Esc to exit fullscreen.",
-      fullscreenToastMobile: "Tap the icon in the top-right to exit fullscreen.",
-      expandSidebar: "Open menu",
-      collapseSidebar: "Close menu",
-      settingsTitle: "Settings",
-      settingsDescription: "Customize display, language, and interaction settings.",
-      settingsAppearance: "Appearance",
-      settingsHelp: "Help",
-      settingsProject: "Project",
-      displayMode: "Display mode",
-      lightMode: "Light",
-      darkMode: "Dark",
-      priceColor: "Price colors",
-      redRiseGreenFall: "Red rises, green falls",
-      greenRiseRedFall: "Green rises, red falls",
-      helpTitle: "How to use",
-      helpIntro: "Understand the market through block size, color intensity, and industry layout.",
-      githubProject: "GitHub project",
-      githubProjectDescription: "Browse the source, submit feedback, or star the project.",
-      mobileTapHint: "Tap any block for stock information.",
-      mobileOpenInXueqiu: "Open on Xueqiu",
-      closeSheet: "Close",
-      designStyleLabel: "UI Style",
-      designStyleDescription: "Switch between iOS 26 Liquid Glass and Classic style",
-      designStyleIOS26: "iOS 26 Liquid Glass",
-      designStyleClassic: "Classic",
-      metrics: {
-        day: "Today",
-        week: "Last 5 Trading Days",
-        month: "Last 20 Trading Days",
-        year: "Year to Date",
-      },
-    },
-  },
   zh: {
     heatmap: {
       title: "股市矩阵",

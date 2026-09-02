@@ -31,11 +31,6 @@ export type PriceColorMode = "red-rise" | "green-rise";
 /** 暗色 / 亮色 */
 export type DisplayMode = "dark" | "light";
 
-// ============ 主题颜色 ============
-
-/** 主题颜色选项 */
-export type ThemeColorKey = "green" | "red" | "blue" | "violet";
-
 // ============ 交易所 ============
 
 /** 交易所代码：上海 / 深圳 / 北京 */
@@ -47,12 +42,6 @@ export type ExchangeCode = "SH" | "SZ" | "BJ";
 export type MarketDataSource = "direct" | "fallback";
 
 // ============ 前端内部类型 ============
-
-/** 客户端用的行情快照（key 是股票代码如 "600519.SH"） */
-export type QuoteMap = Record<
-  string,
-  { price: number; changePct: number; turnoverAmount: number }
->;
 
 /** Canvas 上个股色块的坐标和尺寸信息 */
 export type StockRect = {
@@ -201,22 +190,6 @@ export type TreemapResponse = {
   source: MarketDataSource;
 };
 
-/** 单只股票的行情值 */
-export type QuoteValue = {
-  price: number;
-  changePct: number;
-  turnoverAmount: number;
-};
-
-/** /api/heatmap/quotes 接口返回的数据 */
-export type QuotesResponse = {
-  market: MarketKey;
-  period: HeatmapPeriodKey;
-  updatedAt: string;
-  quotes: Record<string, QuoteValue>;
-  source: MarketDataSource;
-};
-
 /** 单个市场范围的概览信息 */
 export type MarketOverviewItem = {
   market: MarketKey;
@@ -247,5 +220,5 @@ export function isHeatmapPeriodKey(value: string): value is HeatmapPeriodKey {
 
 // ============ 国际化 ============
 
-/** 支持的语言 */
-export type Locale = "zh" | "en";
+/** 支持的语言（审计 A3：当前仅中文；要多语言时先放宽此类型再加字典分支） */
+export type Locale = "zh";

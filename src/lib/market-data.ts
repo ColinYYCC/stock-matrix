@@ -26,8 +26,6 @@ import {
   type MarketKey,
   type MarketOverviewItem,
   type MarketOverviewResponse,
-  type QuotesResponse,
-  type QuoteValue,
   type TreemapResponse,
   isHeatmapPeriodKey,
   isMarketKey,
@@ -1054,30 +1052,9 @@ function buildFallbackTreemap(
   };
 }
 
-/** 兜底 quotes 数据 */
-function buildFallbackQuotes(market: MarketKey, period: HeatmapPeriodKey): QuotesResponse {
-  const snapshot = loadFallbackStocks();
-  const marketStocks = filterByMarketScope(snapshot, market);
-  const quotes: Record<string, QuoteValue> = {};
-
-  for (const stock of marketStocks) {
-    quotes[stock.code] = {
-      price: stock.price,
-      changePct: extractPeriodChange(undefined, period, stock.changePct),
-      turnoverAmount: getStockTurnover(stock) || estimateFallbackTurnover(stock),
-    };
-  }
-
-  return {
-    market,
-    period,
-    updatedAt: fallbackSnapshotSeed.updatedAt,
-    quotes,
-    source: "fallback" as MarketDataSource,
-  };
-}
-
 // ============ 动态股票列表 + 按市场范围筛选 ============
+
+/** 获取热力图树图数据 */
 
 /** 动态股票列表缓存（由 discoverStocks 提供，包含运行时发现的新股） */
 let dynamicStocks: StockSnapshot[] = baselineStocks;
@@ -1151,49 +1128,6 @@ export async function getTreemapData(
       indexChangePct: Number.isFinite(remoteIndexChangePct) ? remoteIndexChangePct : computedIndexChangePct,
     },
     nodes,
-    source: "direct" as MarketDataSource,
-  };
-}
-
-/** 获取实时行情快照 */
-export async function getQuoteData(
-  market: MarketKey,
-  period: HeatmapPeriodKey = "day"
-): Promise<QuotesResponse> {
-  // 先动态发现股票列表（含新股）
-  dynamicStocks = await discoverStocks();
-
-  const quoteResult = await Promise.allSettled([getCachedQuotes()]);
-
-  if (quoteResult[0].status !== "fulfilled") {
-    if (!hasLoggedFallbackWarning) {
-      console.warn("Falling back to bundled market heatmap quotes:", {
-        quotes: quoteResult[0].reason,
-      });
-      hasLoggedFallbackWarning = true;
-    }
-    return buildFallbackQuotes(market, period);
-  }
-
-  hasLoggedFallbackWarning = false;
-
-  const marketStocks = filterByMarketScope(dynamicStocks, market);
-  const quotes: Record<string, QuoteValue> = {};
-
-  for (const stock of marketStocks) {
-    const quote = quoteResult[0].value.quotes[stock.code];
-    quotes[stock.code] = {
-      price: quote?.price ?? stock.price,
-      changePct: extractPeriodChange(quote?.changes, period, stock.changePct),
-      turnoverAmount: quote?.turnoverAmount ?? getStockTurnover(stock),
-    };
-  }
-
-  return {
-    market,
-    period,
-    updatedAt: quoteResult[0].value.updatedAt,
-    quotes,
     source: "direct" as MarketDataSource,
   };
 }

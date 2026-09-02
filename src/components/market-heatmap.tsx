@@ -6,7 +6,6 @@ import {
   useMemo,
   useRef,
   useState,
-  type CSSProperties,
   type MouseEvent as ReactMouseEvent,
 } from "react";
 import {
@@ -46,13 +45,10 @@ import {
   type HeatmapPeriodKey,
   type Locale,
   type MarketKey,
-  type MarketOverview,
   type MarketSummary,
   type PriceColorMode,
-  type QuoteMap,
   type StockRect,
   type SubBoardRect,
-  type ThemeColorKey,
   type TreemapResponse,
   type MarketOverviewResponse,
   type ViewState,
@@ -68,14 +64,6 @@ const refreshIntervalMs = 8000;
 const idleRefreshIntervalMs = 60_000;
 /** 平盘阈值 */
 const flatThreshold = 0.1;
-/** 主题颜色配置 */
-const themeColors: Record<ThemeColorKey, { swatch: string; foreground: string }> = {
-  green: { swatch: "#22c55e", foreground: "#041108" },
-  red: { swatch: "#ef4444", foreground: "#ffffff" },
-  blue: { swatch: "#38bdf8", foreground: "#031018" },
-  violet: { swatch: "#a78bfa", foreground: "#13091f" },
-};
-
 // ============ 工具函数 ============
 
 /** 把股票代码 "600519.SH" 转成雪球格式 "SH600519" */
@@ -84,24 +72,14 @@ function toXueqiuSymbol(code: string) {
   return `${market}${symbol}`;
 }
 
-/** 获取实盘成交额（quotes 里有就用实盘，否则用 fallback） */
-function getLiveTurnoverAmount(code: string, fallback: number, quotes: QuoteMap) {
-  if (code in quotes) {
-    const live = quotes[code].turnoverAmount;
-    return Number.isFinite(live) && live >= 0 ? live : fallback;
-  }
-  return fallback;
-}
-
-/** 加权平均涨跌幅（跳过无数据的股票） */
+/** 加权平均涨跌幅（用 API 快照值计算，跳过无数据的股票） */
 function weightedAverageChange(
-  stocks: Array<{ code: string; value: number; changePct: number }>,
-  quotes: QuoteMap
+  stocks: ReadonlyArray<{ value: number; changePct: number }>
 ) {
   let weightedSum = 0;
   let totalValue = 0;
   for (const stock of stocks) {
-    const changePct = quotes[stock.code]?.changePct ?? stock.changePct;
+    const changePct = stock.changePct;
     if (Number.isNaN(changePct)) continue; // 跳过无数据的股票
     weightedSum += changePct * stock.value;
     totalValue += stock.value;
@@ -128,7 +106,7 @@ function summarizeStocks(stocks: ReadonlyArray<{ changePct: number; turnoverAmou
 /** 按二级行业分组 */
 function groupStocksBySubBoard<
   T extends { code: string; boardName: string; subBoardName: string; value: number; changePct: number },
->(stocks: T[], quotes: QuoteMap) {
+>(stocks: T[]) {
   const subBoardMap = new Map<string, T[]>();
   for (const stock of stocks) {
     const key = stock.subBoardName || stock.boardName;
@@ -142,7 +120,7 @@ function groupStocksBySubBoard<
       boardName: children[0]?.boardName ?? "",
       stockCount: children.length,
       value: children.reduce((sum, child) => sum + child.value, 0),
-      changePct: weightedAverageChange(children, quotes),
+      changePct: weightedAverageChange(children),
       children: [...children].sort((left, right) => right.value - left.value),
     }))
     .sort((left, right) => right.value - left.value);
@@ -191,7 +169,6 @@ export function MarketHeatmap({ locale }: { locale: Locale }) {
   const messages = getMessages(locale).heatmap;
   const [preferencesReady, setPreferencesReady] = useState(false);
   const [displayMode, setDisplayMode] = useState<DisplayMode>("dark");
-  const [themeColor, setThemeColor] = useState<ThemeColorKey>("red");
   const [priceColorMode, setPriceColorMode] = useState<PriceColorMode>("red-rise");
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settingsTab, setSettingsTab] = useState<SettingsTab>("appearance");
@@ -205,7 +182,6 @@ export function MarketHeatmap({ locale }: { locale: Locale }) {
   const [trendFilter, setTrendFilter] = useState(allTrendsValue);
   const [marketSummaries, setMarketSummaries] = useState<Partial<Record<MarketKey, MarketSummary>>>({});
   const [treemapData, setTreemapData] = useState<TreemapResponse | null>(null);
-  const [quotes, setQuotes] = useState<QuoteMap>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [updatedAt, setUpdatedAt] = useState("");
@@ -238,14 +214,6 @@ export function MarketHeatmap({ locale }: { locale: Locale }) {
   const isMobile = useIsMobile();
   // Canvas 配色跟皮肤走：ios26 暗色与页面背景同色温（P1-12），classic 保持原紫色底
   const heatmapCanvasTheme = heatmapCanvasThemes[designStyle][displayMode];
-  const brandStyle = useMemo(
-    () =>
-      ({
-        "--brand": themeColors[themeColor].swatch,
-        "--brand-foreground": themeColors[themeColor].foreground,
-      }) as CSSProperties,
-    [themeColor]
-  );
 
   const activeStockCode = isMobile ? selectedStockCode : hoveredStockCode;
   const activeBoardName = isMobile ? selectedBoardName : hoveredBoardName;
@@ -268,10 +236,8 @@ export function MarketHeatmap({ locale }: { locale: Locale }) {
   useEffect(() => {
     try {
       const storedDisplayMode = window.localStorage.getItem("stock-matrix-display-mode");
-      const storedTheme = window.localStorage.getItem("stock-matrix-theme-color");
       const storedPriceColor = window.localStorage.getItem("stock-matrix-price-color");
       if (storedDisplayMode === "dark" || storedDisplayMode === "light") setDisplayMode(storedDisplayMode);
-      if (storedTheme === "green" || storedTheme === "red" || storedTheme === "blue" || storedTheme === "violet") setThemeColor(storedTheme);
       if (storedPriceColor === "red-rise" || storedPriceColor === "green-rise") setPriceColorMode(storedPriceColor);
     } catch { /* 偏好设置是可选的 */ } finally {
       setPreferencesReady(true);
@@ -391,20 +357,6 @@ export function MarketHeatmap({ locale }: { locale: Locale }) {
     [messages.errorLoad]
   );
 
-  const fetchQuotes = useCallback(
-    async (nextMarket: MarketKey, nextPeriod: HeatmapPeriodKey) => {
-      const response = await fetch(`/api/heatmap/quotes?market=${nextMarket}&period=${nextPeriod}`);
-      if (!response.ok && response.status !== 503) throw new Error(messages.errorLoad);
-      const payload = (await response.json()) as { updatedAt: string; quotes: QuoteMap };
-      // 旧数据不覆盖新数据
-      if (!isDataNewer(payload.updatedAt)) return;
-      setQuotes(payload.quotes);
-      setUpdatedAt(payload.updatedAt);
-      updatedAtRef.current = payload.updatedAt;
-    },
-    [messages.errorLoad]
-  );
-
   const fetchMarketSummaries = useCallback(async (nextPeriod: HeatmapPeriodKey) => {
     const response = await fetch(`/api/heatmap/overview?period=${nextPeriod}`);
     if (!response.ok && response.status !== 503) throw new Error(messages.errorLoad);
@@ -461,21 +413,9 @@ export function MarketHeatmap({ locale }: { locale: Locale }) {
   // 非交易时段仍保持轮询，确保 fallback 数据被及时替换为实时数据
   const pollInterval = isTrading ? refreshIntervalMs : idleRefreshIntervalMs;
 
-  // ============ 轮询行情、treemap 和概览 ============
-  // 关键修复：treemapData 也必须轮询刷新！
-  // 原来只轮询 quotes 不轮询 treemapData，导致两者数据来源不一致：
-  //   - treemapData 可能在页面加载时拿到实时数据（如北方华创 765.79）
-  //   - quotes 每 8s 轮询，可能命中 CDN 缓存的 fallback 数据（如北方华创 470）
-  //   - 前端用 quotes 覆盖 treemapData 的价格，导致价格在两个值之间跳变
-  // 现在同时轮询 treemapData 和 quotes，确保两者数据源一致
-  usePollWhileVisible(
-    useCallback(async () => {
-      // 只在已有 treemap 数据时才清除 error，避免首次加载失败后被轮询清除导致空白页面
-      try { await fetchQuotes(market, period); if (treemapDataRef.current) setError(null); } catch { /* 静默忽略 */ }
-    }, [fetchQuotes, market, period]),
-    pollInterval,
-  );
-
+  // ============ 轮询 treemap 和概览 ============
+  // 审计 A1：价格/涨跌幅的唯一来源是 treemap 接口（节点自带服务端实时值），
+  // 原 quotes 通道已删除，从根上消除"两个数据源不一致导致价格跳变"的问题。
   usePollWhileVisible(
     useCallback(async () => {
       try {
@@ -559,7 +499,7 @@ export function MarketHeatmap({ locale }: { locale: Locale }) {
           boardCount: 1,
           // 注意：turnoverPreviousAmount 和 turnoverDelta 保留原始值，
           // 非全市场范围下为 NaN，前端会显示"无对比"而非误显示"持平"
-          summary: { ...result.summary, ...summarizeStocks(selectedBoard.children), indexChangePct: weightedAverageChange(selectedBoard.children, {} as QuoteMap) },
+          summary: { ...result.summary, ...summarizeStocks(selectedBoard.children), indexChangePct: weightedAverageChange(selectedBoard.children) },
           nodes: [selectedBoard],
         };
       }
@@ -581,7 +521,7 @@ export function MarketHeatmap({ locale }: { locale: Locale }) {
             ...result,
             stockCount: subChildren.length,
             boardCount: 1,
-            summary: { ...result.summary, ...summarizeStocks(subChildren), indexChangePct: weightedAverageChange(subChildren, {} as QuoteMap) },
+            summary: { ...result.summary, ...summarizeStocks(subChildren), indexChangePct: weightedAverageChange(subChildren) },
             nodes: [subBoardNode],
           };
         }
@@ -607,32 +547,7 @@ export function MarketHeatmap({ locale }: { locale: Locale }) {
     return result;
   }, [boardFilter, subBoardFilter, trendFilter, treemapData]);
 
-  // 侧边栏概览：用实时行情计算涨跌家数和成交额（轻量计算，不影响布局性能）
-  const marketOverview = useMemo<MarketOverview | null>(() => {
-    if (!visibleTreemapData) return null;
-    let advanceCount = 0, flatCount = 0, declineCount = 0, turnoverAmount = 0;
-    for (const board of visibleTreemapData.nodes) {
-      for (const stock of board.children) {
-        const changePct = quotes[stock.code]?.changePct ?? stock.changePct;
-        // NaN 表示无数据，计入平盘（不误导用户）
-        if (Number.isNaN(changePct)) {
-          flatCount += 1;
-        } else if (changePct > flatThreshold) {
-          advanceCount += 1;
-        } else if (changePct < -flatThreshold) {
-          declineCount += 1;
-        } else {
-          flatCount += 1;
-        }
-        turnoverAmount += getLiveTurnoverAmount(stock.code, stock.turnoverAmount, quotes);
-      }
-    }
-    return {
-      advanceCount, flatCount, declineCount, turnoverAmount,
-      turnoverPreviousAmount: visibleTreemapData.summary.turnoverPreviousAmount,
-      turnoverDelta: visibleTreemapData.summary.turnoverDelta,
-    };
-  }, [visibleTreemapData, quotes]);
+  // 侧边栏概览直接用 treemap 接口返回的 summary（审计 A1：数据同源，无需前端重算）
 
   // ============ 树图布局：位置计算（依赖 treemap 数据和画布尺寸） ============
   // treemapData 每 8s 轮询刷新，服务端会用实时价格重算流通市值（value），
@@ -652,12 +567,9 @@ export function MarketHeatmap({ locale }: { locale: Locale }) {
       0, 0, canvasSize.width, canvasSize.height, 6
     );
 
-    // 用空对象作为 quotes 参数，这样 weightedAverageChange 和 groupStocksBySubBoard
-    // 会退回到 stock.changePct（API 返回的快照值），不影响位置计算
-    const fallbackQuotes = {} as QuoteMap;
-
+    // 板块标题栏涨跌幅直接用 API 快照值（服务端已按实时行情算好）
     for (const boardBox of boardBoxes) {
-      const boardChangePct = weightedAverageChange(boardBox.item.children, fallbackQuotes);
+      const boardChangePct = weightedAverageChange(boardBox.item.children);
       const titleHeight = boardBox.width < 84 || boardBox.height < 54 ? 0 : clamp(Math.round(Math.min(Math.max(boardBox.height * 0.09, 14), 24)), 12, 24);
       const contentPadding = boardBox.width > 110 && boardBox.height > 90 ? 3 : 2;
       const contentX = boardBox.x + contentPadding;
@@ -672,7 +584,7 @@ export function MarketHeatmap({ locale }: { locale: Locale }) {
 
       if (contentWidth <= 2 || contentHeight <= 2) continue;
 
-      const subBoards = groupStocksBySubBoard(boardBox.item.children, fallbackQuotes);
+      const subBoards = groupStocksBySubBoard(boardBox.item.children);
       const shouldNestSubBoards = subBoards.length > 1 || subBoardFilter !== null;
 
       if (!shouldNestSubBoards) {
@@ -731,103 +643,48 @@ export function MarketHeatmap({ locale }: { locale: Locale }) {
     }
 
     return { stockRects, boardRects, subBoardRects };
-    // 不依赖前端 quotes，只依赖 treemap API 返回的数据（含服务端算好的实时市值）
+    // 只依赖 treemap API 返回的数据（含服务端算好的实时市值和涨跌幅）
   }, [canvasSize.height, canvasSize.width, subBoardFilter, visibleTreemapData]);
 
-  // ============ 树图布局：行情合并（轻量操作，只更新价格和涨跌幅） ============
-  const layout = useMemo(() => {
-    if (layoutPositions.stockRects.length === 0) return layoutPositions;
-
-    // 把实时行情合并到已有的位置矩形上（只改 price 和 changePct，不动位置）
-    // 安全修复：只有当 quotes 数据看起来合理时才覆盖 treemapData 的原始值
-    // 防止 fallback 旧数据（如 470 元）覆盖实时数据（如 765.79 元）
-    const stockRects = layoutPositions.stockRects.map((rect) => {
-      const quote = quotes[rect.code];
-      if (!quote) return rect;
-      // 安全检查：如果 quote 价格为 0 或异常（< 原价的 10%），不覆盖
-      // 这能防止 fallback 旧数据污染实时数据
-      const isPriceReasonable = quote.price > 0 && (rect.price <= 0 || quote.price >= rect.price * 0.1);
-      if (!isPriceReasonable) return rect;
-      return { ...rect, price: quote.price, changePct: quote.changePct };
-    });
-
-    // 按板块重新计算加权涨跌幅（用于标题栏颜色，跳过 NaN）
-    const boardChangeMap = new Map<string, number>();
-    const boardValueMap = new Map<string, number>();
-    for (const rect of stockRects) {
-      if (Number.isNaN(rect.changePct)) continue; // 跳过无数据的股票
-      const key = rect.boardName;
-      boardChangeMap.set(key, (boardChangeMap.get(key) ?? 0) + rect.changePct * rect.value);
-      boardValueMap.set(key, (boardValueMap.get(key) ?? 0) + rect.value);
-    }
-    const boardRects = layoutPositions.boardRects.map((rect) => {
-      const totalValue = boardValueMap.get(rect.name) ?? 0;
-      const weightedSum = boardChangeMap.get(rect.name) ?? 0;
-      // 如果该板块所有股票都没有数据，保持原值不变
-      if (totalValue === 0) return rect;
-      return { ...rect, changePct: weightedSum / totalValue };
-    });
-
-    // 按二级行业重新计算加权涨跌幅（用于子板块标题栏颜色，跳过 NaN）
-    // 用 "boardName\0subBoardName" 作为 key，避免同名子板块跨板块混淆
-    const subBoardChangeMap = new Map<string, number>();
-    const subBoardValueMap = new Map<string, number>();
-    for (const rect of stockRects) {
-      if (Number.isNaN(rect.changePct)) continue; // 跳过无数据的股票
-      const key = `${rect.boardName}\0${rect.subBoardName}`;
-      subBoardChangeMap.set(key, (subBoardChangeMap.get(key) ?? 0) + rect.changePct * rect.value);
-      subBoardValueMap.set(key, (subBoardValueMap.get(key) ?? 0) + rect.value);
-    }
-    const subBoardRects = layoutPositions.subBoardRects.map((rect) => {
-      const key = `${rect.boardName}\0${rect.name}`;
-      const totalValue = subBoardValueMap.get(key) ?? 0;
-      const weightedSum = subBoardChangeMap.get(key) ?? 0;
-      // totalValue 为 0 时保留原值，避免误将颜色重置为平盘灰
-      return { ...rect, changePct: totalValue > 0 ? weightedSum / totalValue : rect.changePct };
-    });
-
-    return { stockRects, boardRects, subBoardRects };
-  }, [layoutPositions, quotes]);
-
   useEffect(() => {
-    lastStockRectsRef.current = layout.stockRects;
-    lastBoardRectsRef.current = layout.boardRects;
-    lastSubBoardRectsRef.current = layout.subBoardRects;
-  }, [layout.boardRects, layout.stockRects, layout.subBoardRects]);
+    lastStockRectsRef.current = layoutPositions.stockRects;
+    lastBoardRectsRef.current = layoutPositions.boardRects;
+    lastSubBoardRectsRef.current = layoutPositions.subBoardRects;
+  }, [layoutPositions.boardRects, layoutPositions.stockRects, layoutPositions.subBoardRects]);
 
   // ============ 悬浮命中 ============
   const activeStock = useMemo(() => {
     if (!activeStockCode) return null;
-    return layout.stockRects.find((stock) => stock.code === activeStockCode) ?? null;
-  }, [activeStockCode, layout.stockRects]);
+    return layoutPositions.stockRects.find((stock) => stock.code === activeStockCode) ?? null;
+  }, [activeStockCode, layoutPositions.stockRects]);
 
   const highlightedStock = useMemo(() => {
     if (activeStock) return activeStock;
     if (!activeBoardName) return null;
-    return layout.stockRects.find((stock) => stock.boardName === activeBoardName) ?? null;
-  }, [activeBoardName, activeStock, layout.stockRects]);
+    return layoutPositions.stockRects.find((stock) => stock.boardName === activeBoardName) ?? null;
+  }, [activeBoardName, activeStock, layoutPositions.stockRects]);
 
   const activeBoardRect = useMemo(() => {
     if (!activeBoardName) return null;
-    return layout.boardRects.find((board) => board.name === activeBoardName) ?? null;
-  }, [activeBoardName, layout.boardRects]);
+    return layoutPositions.boardRects.find((board) => board.name === activeBoardName) ?? null;
+  }, [activeBoardName, layoutPositions.boardRects]);
 
   const activeSubBoardRect = useMemo(() => {
     if (!activeBoardName || !activeSubBoardName) return null;
-    return layout.subBoardRects.find((sub) => sub.name === activeSubBoardName && sub.boardName === activeBoardName) ?? null;
-  }, [activeBoardName, activeSubBoardName, layout.subBoardRects]);
+    return layoutPositions.subBoardRects.find((sub) => sub.name === activeSubBoardName && sub.boardName === activeBoardName) ?? null;
+  }, [activeBoardName, activeSubBoardName, layoutPositions.subBoardRects]);
 
   const activeBoardStocks = useMemo(() => {
     if (!activeBoardName || !visibleTreemapData) return [];
     const board = visibleTreemapData.nodes.find((node) => node.name === activeBoardName);
     if (!board) return [];
+    // treemap 节点自带服务端实时价格/涨跌幅，无需再合并 quotes
     return board.children
       .map((stock) => {
-        const quote = quotes[stock.code];
-        return { code: stock.code, name: stock.name, subBoardName: stock.subBoardName, price: quote?.price ?? stock.price, changePct: quote?.changePct ?? stock.changePct };
+        return { code: stock.code, name: stock.name, subBoardName: stock.subBoardName, price: stock.price, changePct: stock.changePct };
       })
       .sort((left, right) => Math.abs(right.changePct) - Math.abs(left.changePct));
-  }, [activeBoardName, quotes, visibleTreemapData]);
+  }, [activeBoardName, visibleTreemapData]);
 
   const inspectorStocks = useMemo(() => {
     if (activeBoardStocks.length === 0) return [];
@@ -982,7 +839,7 @@ export function MarketHeatmap({ locale }: { locale: Locale }) {
   // 非高亮依赖变化时，标记离屏底图需要重绘
   useEffect(() => {
     baseDirtyRef.current = true;
-  }, [canvasSize.height, canvasSize.width, heatmapCanvasTheme, layout.boardRects, layout.stockRects, layout.subBoardRects, priceColorMode, view.scale, view.x, view.y]);
+  }, [canvasSize.height, canvasSize.width, heatmapCanvasTheme, layoutPositions.boardRects, layoutPositions.stockRects, layoutPositions.subBoardRects, priceColorMode, view.scale, view.x, view.y]);
 
   useEffect(() => {
     // 取消上一帧还没执行的绘制（多次状态变化合并成一次绘制）
@@ -1011,7 +868,7 @@ export function MarketHeatmap({ locale }: { locale: Locale }) {
         drawHeatmap({
           context: offCtx, canvasWidth: canvasSize.width, canvasHeight: canvasSize.height, pixelRatio, view,
           theme: heatmapCanvasTheme, priceColorMode,
-          stockRects: layout.stockRects, boardRects: layout.boardRects, subBoardRects: layout.subBoardRects,
+          stockRects: layoutPositions.stockRects, boardRects: layoutPositions.boardRects, subBoardRects: layoutPositions.subBoardRects,
         });
       }
 
@@ -1039,7 +896,7 @@ export function MarketHeatmap({ locale }: { locale: Locale }) {
       }
     };
   }, [
-    canvasSize.height, canvasSize.width, heatmapCanvasTheme, layout.boardRects, layout.stockRects, layout.subBoardRects, priceColorMode, view.scale, view.x, view.y,
+    canvasSize.height, canvasSize.width, heatmapCanvasTheme, layoutPositions.boardRects, layoutPositions.stockRects, layoutPositions.subBoardRects, priceColorMode, view.scale, view.x, view.y,
     highlightedStock, activeBoardRect, activeSubBoardRect,
   ]);
 
@@ -1417,7 +1274,6 @@ export function MarketHeatmap({ locale }: { locale: Locale }) {
         isIOS26 ? "" : "bg-background",
         isFullscreen ? "fixed inset-0 z-[9999]" : "flex min-h-0 flex-1 flex-col"
       )}
-      style={brandStyle}
     >
       <div
         className={cn(
@@ -1440,7 +1296,7 @@ export function MarketHeatmap({ locale }: { locale: Locale }) {
           priceColorMode={priceColorMode}
           marketSummaries={marketSummaries}
           treemapData={treemapData}
-          marketOverview={marketOverview}
+          marketOverview={visibleTreemapData?.summary ?? null}
           updatedAt={updatedAt}
           isTrading={isTrading}
           sidebarOpen={sidebarOpen}
