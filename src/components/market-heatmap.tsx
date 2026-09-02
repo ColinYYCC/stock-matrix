@@ -24,7 +24,7 @@ import { cn } from "@/lib/utils";
 import { clamp } from "@/lib/format";
 import { drawHeatmap, drawHeatmapHighlight, heatmapCanvasThemes } from "@/lib/canvas-render";
 import { binaryTreemap } from "@/lib/treemap";
-import { getMessages, type HeatmapMessages } from "@/lib/i18n";
+import { getMessages } from "@/lib/i18n";
 import { usePollWhileVisible } from "@/hooks/use-poll-while-visible";
 import { useTradingHours } from "@/hooks/use-trading-hours";
 import { useIsMobile } from "@/hooks/use-is-mobile";
@@ -37,11 +37,17 @@ import {
 import {
   isHeatmapPeriodKey,
   isMarketKey,
+  allBoardsValue,
+  allTrendsValue,
+  fallingOnlyValue,
+  risingOnlyValue,
   type BoardRect,
   type DisplayMode,
   type HeatmapPeriodKey,
   type Locale,
   type MarketKey,
+  type MarketOverview,
+  type MarketSummary,
   type PriceColorMode,
   type QuoteMap,
   type StockRect,
@@ -62,35 +68,12 @@ const refreshIntervalMs = 8000;
 const idleRefreshIntervalMs = 60_000;
 /** 平盘阈值 */
 const flatThreshold = 0.1;
-/** 全部板块 / 全部趋势的筛选值 */
-const allBoardsValue = "__all__";
-const allTrendsValue = "__all__";
-const risingOnlyValue = "__rising__";
-const fallingOnlyValue = "__falling__";
-
 /** 主题颜色配置 */
 const themeColors: Record<ThemeColorKey, { swatch: string; foreground: string }> = {
   green: { swatch: "#22c55e", foreground: "#041108" },
   red: { swatch: "#ef4444", foreground: "#ffffff" },
   blue: { swatch: "#38bdf8", foreground: "#031018" },
   violet: { swatch: "#a78bfa", foreground: "#13091f" },
-};
-
-/** 市场摘要信息 */
-type MarketSummary = {
-  changePct: number;
-  stockCount: number;
-  updatedAt: string;
-};
-
-/** 市场概览信息 */
-type MarketOverview = {
-  advanceCount: number;
-  flatCount: number;
-  declineCount: number;
-  turnoverAmount: number;
-  turnoverPreviousAmount: number;
-  turnoverDelta: number;
 };
 
 // ============ 工具函数 ============
@@ -181,15 +164,15 @@ function HeatmapLoadingOverlay({ displayMode, locale }: { displayMode: DisplayMo
  * 负责状态管理、数据拉取、Canvas 绘制、交互事件处理。
  * 使用拆分后的子组件（Sidebar、Inspector、ColorLegend）来渲染 UI。
  */
-export function MarketHeatmap({ locale: initialLocale }: { locale: Locale; messages?: HeatmapMessages }) {
+export function MarketHeatmap({ locale }: { locale: Locale }) {
   // ============ Refs ============
   const viewportRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const inspectorListRef = useRef<HTMLDivElement | null>(null);
 
   // ============ 基础状态 ============
-  const [locale] = useState<Locale>(initialLocale);
-  const messages = useMemo(() => getMessages(locale).heatmap, [locale]);
+  // 语言由服务端固定传入（当前仅中文），getMessages 返回同一对象引用，可安全作为依赖
+  const messages = getMessages(locale).heatmap;
   const [preferencesReady, setPreferencesReady] = useState(false);
   const [displayMode, setDisplayMode] = useState<DisplayMode>("dark");
   const [themeColor, setThemeColor] = useState<ThemeColorKey>("red");
@@ -1039,7 +1022,6 @@ export function MarketHeatmap({ locale: initialLocale }: { locale: Locale; messa
           context: offCtx, canvasWidth: canvasSize.width, canvasHeight: canvasSize.height, pixelRatio, view,
           theme: heatmapCanvasTheme, priceColorMode,
           stockRects: layout.stockRects, boardRects: layout.boardRects, subBoardRects: layout.subBoardRects,
-          highlightedStock: null, activeBoardName: null, activeSubBoardName: null,
         });
       }
 

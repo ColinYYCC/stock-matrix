@@ -39,14 +39,6 @@ export function formatCompactChange(value: number) {
   return value > 0 ? `+${text}%` : `${text}%`;
 }
 
-/** 截断文字，超长加省略号 */
-export function shortenText(text: string, maxLength: number) {
-  if (text.length <= maxLength) {
-    return text;
-  }
-  return `${text.slice(0, maxLength)}…`;
-}
-
 /** 用千分位格式化数量 */
 export function formatCount(value: number, locale: Locale) {
   return new Intl.NumberFormat(locale === "zh" ? "zh-CN" : "en-US").format(value);

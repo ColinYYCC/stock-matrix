@@ -462,45 +462,6 @@ async function fetchClistPage(pageNum: number): Promise<unknown> {
   throw lastError ?? new Error("fetchClistPage failed");
 }
 
-/**
- * 并发拉取全部分页，返回 payloads 和总股票数。
- *
- * 注意：discoverStocks() 现在内联了此逻辑以支持总数预检优化。
- * 此函数保留供外部调用或测试使用。
- */
-async function fetchAllClistPages(): Promise<{ payloads: unknown[]; total: number }> {
-  // 先拉第一页获取总数
-  const firstPayload = (await fetchClistPage(1)) as {
-    data?: { total?: number };
-  };
-  const total = firstPayload.data?.total ?? 0;
-  if (total <= 0) {
-    throw new Error(`clist total is invalid: ${total}`);
-  }
-
-  const pageCount = Math.ceil(total / CLIST_PAGE_SIZE);
-  if (pageCount <= 1) {
-    return { payloads: [firstPayload], total };
-  }
-
-  // 并发拉取剩余页
-  const payloads: unknown[] = [firstPayload];
-  const remainingPages = Array.from({ length: pageCount - 1 }, (_, i) => i + 2);
-
-  // 分批并发，每批 CLIST_CONCURRENCY 个
-  for (let i = 0; i < remainingPages.length; i += CLIST_CONCURRENCY) {
-    const batch = remainingPages.slice(i, i + CLIST_CONCURRENCY);
-    const results = await Promise.allSettled(batch.map((p) => fetchClistPage(p)));
-    for (const result of results) {
-      if (result.status === "fulfilled") {
-        payloads.push(result.value);
-      }
-    }
-  }
-
-  return { payloads, total };
-}
-
 // ============ 模块缓存 ============
 
 /** 开市期间缓存 TTL：15 分钟（新股上市后最多 15 分钟出现） */

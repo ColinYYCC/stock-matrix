@@ -131,6 +131,32 @@ export type ViewState = {
   y: number;
 };
 
+// ============ 客户端筛选常量与类型 ============
+
+/** 全部板块 / 全部趋势的筛选哨兵值（组件、URL 同步共用） */
+export const allBoardsValue = "__all__";
+export const allTrendsValue = "__all__";
+/** 仅上涨 / 仅下跌的筛选哨兵值 */
+export const risingOnlyValue = "__rising__";
+export const fallingOnlyValue = "__falling__";
+
+/** 侧边栏市场概览统计（客户端从 treemap 数据计算） */
+export type MarketOverview = {
+  advanceCount: number;
+  flatCount: number;
+  declineCount: number;
+  turnoverAmount: number;
+  turnoverPreviousAmount: number;
+  turnoverDelta: number;
+};
+
+/** 单个市场的摘要信息 */
+export type MarketSummary = {
+  changePct: number;
+  stockCount: number;
+  updatedAt: string;
+};
+
 // ============ 服务端 API 类型 ============
 
 /** 个股节点（热力图中的一只股票） */

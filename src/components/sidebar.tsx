@@ -12,12 +12,15 @@ import {
 } from "@/lib/format";
 import { getChangeTextClass, getRiseTextClass, getFallTextClass } from "@/lib/heatmap-color";
 import type { HeatmapMessages } from "@/lib/i18n";
+import { allBoardsValue, allTrendsValue, fallingOnlyValue, risingOnlyValue } from "@/types/heatmap";
 import type {
   HeatmapPeriodKey,
   MarketKey,
+  MarketOverview,
+  MarketSummary,
   PriceColorMode,
+  TreemapResponse,
 } from "@/types/heatmap";
-import type { TreemapResponse } from "@/types/heatmap";
 import type { DesignStyle } from "@/hooks/use-design-style";
 import { skins } from "@/components/skin";
 
@@ -25,14 +28,6 @@ import { skins } from "@/components/skin";
 const marketOptions: MarketKey[] = ["all", "sse", "szse", "hs300", "zza500", "cyb", "kcb"];
 /** 侧边栏可用的周期选项 */
 const periodOptions: HeatmapPeriodKey[] = ["day", "week", "month", "year"];
-/** 全部板块的筛选值 */
-const allBoardsValue = "__all__";
-/** 全部趋势的筛选值 */
-const allTrendsValue = "__all__";
-/** 仅上涨的筛选值 */
-const risingOnlyValue = "__rising__";
-/** 仅下跌的筛选值 */
-const fallingOnlyValue = "__falling__";
 
 /** 市场范围的紧凑标签 */
 function getCompactMarketLabel(market: MarketKey): string {
@@ -69,23 +64,6 @@ function getPeriodLabel(period: HeatmapPeriodKey, messages: HeatmapMessages): st
   };
   return labels[period];
 }
-
-/** 市场概览数据 */
-type MarketOverview = {
-  advanceCount: number;
-  flatCount: number;
-  declineCount: number;
-  turnoverAmount: number;
-  turnoverPreviousAmount: number;
-  turnoverDelta: number;
-};
-
-/** 单个市场的摘要信息 */
-type MarketSummary = {
-  changePct: number;
-  stockCount: number;
-  updatedAt: string;
-};
 
 /** 根据成交额趋势返回标签文字 */
 function getTrendLabel(trend: ReturnType<typeof getTurnoverTrend>, messages: HeatmapMessages): string {
