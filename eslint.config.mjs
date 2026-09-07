@@ -12,7 +12,8 @@ const eslintConfig = defineConfig([
     },
   },
   // "**/._*"：排除外置硬盘产生的 macOS AppleDouble 元数据文件（不是源码）
-  globalIgnores([".next/**", "out/**", "build/**", "next-env.d.ts", "**/._*"]),
+  // .venv / .codebuddy / graphify-out：Python 虚拟环境、AI 助手数据、代码图谱产物，都不是项目源码
+  globalIgnores([".next/**", "out/**", "build/**", "next-env.d.ts", "**/._*", ".venv/**", ".codebuddy/**", "graphify-out/**"]),
 ]);
 
 export default eslintConfig;
