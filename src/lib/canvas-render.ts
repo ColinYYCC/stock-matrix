@@ -220,7 +220,7 @@ function drawClippedText(
 }
 
 /** 二分查找：截断文字使其不超过 maxWidth */
-export function fitTextToWidth(context: CanvasRenderingContext2D, text: string, maxWidth: number): string {
+function fitTextToWidth(context: CanvasRenderingContext2D, text: string, maxWidth: number): string {
   if (maxWidth <= 0 || text.length === 0) return "";
 
   if (context.measureText(text).width <= maxWidth) return text;
@@ -254,7 +254,7 @@ function withAlpha(color: string, alpha: number): string {
 }
 
 /** 按比例缩放字号使其不超过 maxWidth */
-export function fitFontSizeToWidth(
+function fitFontSizeToWidth(
   context: CanvasRenderingContext2D,
   text: string,
   weight: number,
@@ -311,7 +311,7 @@ function fitsVertically(lineHeights: number[], lineGap: number, availableHeight:
  * - 超出时自动降级行数：三行→两行→单行
  * - 阴影预留 SHADOW_PADDING 防止视觉溢出
  */
-export function drawStockLabel(context: CanvasRenderingContext2D, stock: StockRect, priceColorMode: PriceColorMode, zoomScale = 1) {
+function drawStockLabel(context: CanvasRenderingContext2D, stock: StockRect, priceColorMode: PriceColorMode, zoomScale = 1) {
   const displayWidth = stock.width * zoomScale;
   const displayHeight = stock.height * zoomScale;
   const screenUnit = 1 / zoomScale;

@@ -106,13 +106,6 @@ export type Bounds = {
   height: number;
 };
 
-/** 树图布局结果 */
-export type TreemapLayout = {
-  stockRects: StockRect[];
-  boardRects: BoardRect[];
-  subBoardRects: SubBoardRect[];
-};
-
 /** 视图状态（缩放比例和偏移） */
 export type ViewState = {
   scale: number;

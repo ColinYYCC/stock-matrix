@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
+import { heatmapDataResponse } from "@/lib/heatmap-api";
 import { getTreemapData } from "@/lib/market-data";
 import { isHeatmapPeriodKey, isMarketKey } from "@/types/heatmap";
 
@@ -27,18 +28,7 @@ export async function GET(request: NextRequest) {
 
   try {
     const data = await getTreemapData(marketParam, periodParam);
-    // fallback 数据标记为 503，不会被 CDN 缓存，CDN 会继续返回上一次的 200 响应
-    if (data.source === "fallback") {
-      return NextResponse.json(data, {
-        status: 503,
-        headers: { "Cache-Control": "no-store" },
-      });
-    }
-    const response = NextResponse.json(data);
-    // CDN 缓存：8 秒新鲜 + 5 分钟 stale-while-revalidate
-    // stale 窗口拉长到 300 秒：数据源临时挂了时 CDN 继续返回上次成功的实时数据
-    response.headers.set("Cache-Control", "public, s-maxage=8, stale-while-revalidate=300");
-    return response;
+    return heatmapDataResponse(data);
   } catch (error) {
     // 审计 S1：对外只回固定文案，详细错误只进服务端日志，避免泄露上游内部细节
     console.error("[api/heatmap/treemap] 数据加载失败:", error);
