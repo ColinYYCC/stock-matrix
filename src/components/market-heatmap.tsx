@@ -21,10 +21,11 @@ import { MobileStockSheet } from "@/components/mobile-stock-sheet";
 import { ColorLegend } from "@/components/color-legend";
 import { cn } from "@/lib/utils";
 import { clamp } from "@/lib/format";
+import { flatThreshold, groupStocksBySubBoard, summarizeStocks, weightedAverageChange } from "@/lib/market-stats";
 import { drawHeatmap, drawHeatmapHighlight, heatmapCanvasThemes } from "@/lib/canvas-render";
 import { binaryTreemap } from "@/lib/treemap";
 import { getMessages } from "@/lib/i18n";
-import { usePollWhileVisible } from "@/hooks/use-poll-while-visible";
+import { useHeatmapData, tradingRefreshIntervalMs, idleRefreshIntervalMs } from "@/hooks/use-heatmap-data";
 import { useTradingHours } from "@/hooks/use-trading-hours";
 import { useIsMobile } from "@/hooks/use-is-mobile";
 import {
@@ -45,12 +46,10 @@ import {
   type HeatmapPeriodKey,
   type Locale,
   type MarketKey,
-  type MarketSummary,
   type PriceColorMode,
   type StockRect,
   type SubBoardRect,
   type TreemapResponse,
-  type MarketOverviewResponse,
   type ViewState,
 } from "@/types/heatmap";
 import { SettingsDrawer, type SettingsTab } from "@/components/settings-drawer";
@@ -58,12 +57,6 @@ import { useDesignStyle } from "@/hooks/use-design-style";
 
 // ============ 常量 ============
 
-/** 交易时段轮询间隔：8 秒 */
-const refreshIntervalMs = 8000;
-/** 非交易时段轮询间隔：60 秒（行情不会变化，低频刷新即可，主要避免 fallback 数据长期停留） */
-const idleRefreshIntervalMs = 60_000;
-/** 平盘阈值 */
-const flatThreshold = 0.1;
 // ============ 工具函数 ============
 
 /** 把股票代码 "600519.SH" 转成雪球格式 "SH600519" */
@@ -72,58 +65,9 @@ function toXueqiuSymbol(code: string) {
   return `${market}${symbol}`;
 }
 
-/** 加权平均涨跌幅（用 API 快照值计算，跳过无数据的股票） */
-function weightedAverageChange(
-  stocks: ReadonlyArray<{ value: number; changePct: number }>
-) {
-  let weightedSum = 0;
-  let totalValue = 0;
-  for (const stock of stocks) {
-    const changePct = stock.changePct;
-    if (Number.isNaN(changePct)) continue; // 跳过无数据的股票
-    weightedSum += changePct * stock.value;
-    totalValue += stock.value;
-  }
-  return totalValue <= 0 ? 0 : weightedSum / totalValue;
-}
-
-/** 遍历股票列表，累计涨/平/跌家数与成交额（阈值 flatThreshold；无数据 NaN 落入平盘分支） */
-function summarizeStocks(stocks: ReadonlyArray<{ changePct: number; turnoverAmount: number }>) {
-  let advanceCount = 0;
-  let flatCount = 0;
-  let declineCount = 0;
-  let turnoverAmount = 0;
-  for (const stock of stocks) {
-    const changePct = stock.changePct;
-    if (changePct > flatThreshold) advanceCount += 1;
-    else if (changePct < -flatThreshold) declineCount += 1;
-    else flatCount += 1;
-    turnoverAmount += stock.turnoverAmount;
-  }
-  return { advanceCount, flatCount, declineCount, turnoverAmount };
-}
-
-/** 按二级行业分组 */
-function groupStocksBySubBoard<
-  T extends { code: string; boardName: string; subBoardName: string; value: number; changePct: number },
->(stocks: T[]) {
-  const subBoardMap = new Map<string, T[]>();
-  for (const stock of stocks) {
-    const key = stock.subBoardName || stock.boardName;
-    const current = subBoardMap.get(key) ?? [];
-    current.push(stock);
-    subBoardMap.set(key, current);
-  }
-  return Array.from(subBoardMap.entries())
-    .map(([name, children]) => ({
-      name,
-      boardName: children[0]?.boardName ?? "",
-      stockCount: children.length,
-      value: children.reduce((sum, child) => sum + child.value, 0),
-      changePct: weightedAverageChange(children),
-      children: [...children].sort((left, right) => right.value - left.value),
-    }))
-    .sort((left, right) => right.value - left.value);
+/** 板块级加权涨跌幅：无有效数据（周/月/年视图部分板块无涨跌幅数据）时按 0% 显示 */
+function boardWeightedChange(stocks: ReadonlyArray<{ value: number; changePct: number }>) {
+  return weightedAverageChange(stocks) || 0;
 }
 
 // ============ 加载状态遮罩 ============
@@ -180,17 +124,6 @@ export function MarketHeatmap({ locale }: { locale: Locale }) {
   const [boardFilter, setBoardFilter] = useState(allBoardsValue);
   const [subBoardFilter, setSubBoardFilter] = useState<string | null>(null);
   const [trendFilter, setTrendFilter] = useState(allTrendsValue);
-  const [marketSummaries, setMarketSummaries] = useState<Partial<Record<MarketKey, MarketSummary>>>({});
-  const [treemapData, setTreemapData] = useState<TreemapResponse | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [updatedAt, setUpdatedAt] = useState("");
-  /** 当前数据的 updatedAt（用 ref 在轮询回调中比较新旧） */
-  const updatedAtRef = useRef("");
-  useEffect(() => { updatedAtRef.current = updatedAt; }, [updatedAt]);
-  /** treemapData 的 ref，轮询回调中判断是否有数据，避免在无数据时清除 error */
-  const treemapDataRef = useRef<TreemapResponse | null>(null);
-  useEffect(() => { treemapDataRef.current = treemapData; }, [treemapData]);
 
   // ============ 交互状态 ============
   const [canvasSize, setCanvasSize] = useState({ width: 1200, height: 760 });
@@ -330,54 +263,18 @@ export function MarketHeatmap({ locale }: { locale: Locale }) {
     };
   }, []);
 
-  // ============ 数据拉取 ============
-  /** 比较新旧 updatedAt，旧数据不覆盖新数据（防止 CDN fallback 覆盖实时数据） */
-  function isDataNewer(newUpdatedAt: string): boolean {
-    const current = updatedAtRef.current;
-    if (!current) return true; // 首次加载，接受任何数据
-    if (!newUpdatedAt) return false; // 新数据没有时间戳，不信任
-    // 用 Date.getTime() 比较，避免不同时区格式（Z vs +08:00）的字符串比较错误
-    const newTime = new Date(newUpdatedAt).getTime();
-    const currentTime = new Date(current).getTime();
-    if (!Number.isFinite(newTime)) return false;
-    if (!Number.isFinite(currentTime)) return true;
-    return newTime >= currentTime;
-  }
-
-  const fetchTreemap = useCallback(
-    async (nextMarket: MarketKey, nextPeriod: HeatmapPeriodKey) => {
-      const response = await fetch(`/api/heatmap/treemap?market=${nextMarket}&period=${nextPeriod}`);
-      // 503 = fallback 数据，首次加载可以接受，但如果是 502+ 则报错
-      if (!response.ok && response.status !== 503) throw new Error(messages.errorLoad);
-      const payload = (await response.json()) as TreemapResponse;
-      setTreemapData(payload);
-      setUpdatedAt(payload.updatedAt);
-      updatedAtRef.current = payload.updatedAt;
-    },
-    [messages.errorLoad]
-  );
-
-  const fetchMarketSummaries = useCallback(async (nextPeriod: HeatmapPeriodKey) => {
-    const response = await fetch(`/api/heatmap/overview?period=${nextPeriod}`);
-    if (!response.ok && response.status !== 503) throw new Error(messages.errorLoad);
-    const payload = (await response.json()) as MarketOverviewResponse;
-    const next: Partial<Record<MarketKey, MarketSummary>> = {};
-    for (const item of payload.markets) {
-      next[item.market] = { changePct: item.changePct, stockCount: item.stockCount, updatedAt: item.updatedAt };
-    }
-    setMarketSummaries(next);
-  }, [messages.errorLoad]);
-
-  // ============ 加载 treemap 数据 ============
-  // 首次加载带重试：Serverless 冷启动时第一次请求可能失败，重试 2 次后仍失败才报错
-  // 审查问题1：以 urlReady 为门闩，等 URL 状态恢复完成后再发首次请求，
-  // 避免带参分享链接冷启动时先用默认 all/day 白拉一至两次
-  useEffect(() => {
-    if (!urlReady) return;
-    let cancelled = false;
-    async function loadTreemap() {
-      setLoading(true);
-      setError(null);
+  // ============ 数据收发 ============
+  // 交易时段 8 秒刷新，非交易时段 60 秒低频刷新；非交易时段仍保持轮询，
+  // 确保 fallback 数据被及时替换为实时数据。
+  // 收发规矩（重试/门闩/新旧仲裁/轮询）集中在 useHeatmapData，组件只消费数据
+  const isTrading = useTradingHours();
+  const { treemapData, marketSummaries, loading, error, updatedAt } = useHeatmapData({
+    market,
+    period,
+    urlReady,
+    pollIntervalMs: isTrading ? tradingRefreshIntervalMs : idleRefreshIntervalMs,
+    loadErrorMessage: messages.errorLoad,
+    onReloadStart: useCallback(() => {
       setHoveredStockCode(null);
       setHoveredBoardName(null);
       setHoveredBoardTitleName(null);
@@ -385,72 +282,8 @@ export function MarketHeatmap({ locale }: { locale: Locale }) {
       setSelectedStockCode(null);
       setSelectedBoardName(null);
       setSelectedSubBoardName(null);
-      const maxRetries = 2;
-      const baseDelay = 800;
-      let lastError = false;
-      for (let attempt = 0; attempt <= maxRetries; attempt++) {
-        if (cancelled) break;
-        try {
-          await fetchTreemap(market, period);
-          lastError = false;
-          break;
-        } catch (error) {
-          // 审计 Q1：明报失败原因，不再静默吞掉
-          console.warn("treemap 加载失败:", error);
-          lastError = true;
-          if (attempt < maxRetries && !cancelled) {
-            await new Promise((r) => setTimeout(r, baseDelay * Math.pow(2, attempt)));
-          }
-        }
-      }
-      if (!cancelled) {
-        if (lastError) setError(messages.errorLoad);
-        setLoading(false);
-      }
-    }
-    loadTreemap();
-    return () => { cancelled = true; };
-  }, [fetchTreemap, market, messages.errorLoad, period, urlReady]);
-
-  // ============ 交易时段判断 ============
-  const isTrading = useTradingHours();
-  // 交易时段 8 秒刷新，非交易时段 60 秒低频刷新
-  // 非交易时段仍保持轮询，确保 fallback 数据被及时替换为实时数据
-  const pollInterval = isTrading ? refreshIntervalMs : idleRefreshIntervalMs;
-
-  // ============ 轮询 treemap 和概览 ============
-  // 审计 A1：价格/涨跌幅的唯一来源是 treemap 接口（节点自带服务端实时值），
-  // 原 quotes 通道已删除，从根上消除"两个数据源不一致导致价格跳变"的问题。
-  usePollWhileVisible(
-    useCallback(async () => {
-      // 审查问题1：URL 恢复完成前不发起轮询，避免用默认参数发请求
-      if (!urlReady) return;
-      try {
-        // 静默刷新 treemapData，不触发 loading 状态和重置选中状态
-        const response = await fetch(`/api/heatmap/treemap?market=${market}&period=${period}`);
-        if (!response.ok && response.status !== 503) return;
-        const payload = (await response.json()) as TreemapResponse;
-        // 旧数据不覆盖新数据（防止 CDN 返回的 fallback 覆盖实时数据）
-        if (!isDataNewer(payload.updatedAt)) return;
-        setTreemapData(payload);
-        setUpdatedAt(payload.updatedAt);
-        updatedAtRef.current = payload.updatedAt;
-        setError(null);
-      } catch (error) {
-        console.warn("treemap 轮询失败，保留现有数据:", error);
-      }
-    }, [market, period, urlReady]),
-    pollInterval,
-  );
-
-  usePollWhileVisible(
-    useCallback(async () => {
-      // 审查问题1：URL 恢复完成前不发起轮询
-      if (!urlReady) return;
-      try { await fetchMarketSummaries(period); if (treemapDataRef.current) setError(null); } catch (error) { console.warn("概览轮询失败，保留现有数据:", error); }
-    }, [fetchMarketSummaries, period, urlReady]),
-    pollInterval,
-  );
+    }, []),
+  });
 
   // ============ 筛选 ============
   useEffect(() => {
@@ -508,7 +341,7 @@ export function MarketHeatmap({ locale }: { locale: Locale }) {
           boardCount: 1,
           // 注意：turnoverPreviousAmount 和 turnoverDelta 保留原始值，
           // 非全市场范围下为 NaN，前端会显示"无对比"而非误显示"持平"
-          summary: { ...result.summary, ...summarizeStocks(selectedBoard.children), indexChangePct: weightedAverageChange(selectedBoard.children) },
+          summary: { ...result.summary, ...summarizeStocks(selectedBoard.children), indexChangePct: boardWeightedChange(selectedBoard.children) },
           nodes: [selectedBoard],
         };
       }
@@ -530,7 +363,7 @@ export function MarketHeatmap({ locale }: { locale: Locale }) {
             ...result,
             stockCount: subChildren.length,
             boardCount: 1,
-            summary: { ...result.summary, ...summarizeStocks(subChildren), indexChangePct: weightedAverageChange(subChildren) },
+            summary: { ...result.summary, ...summarizeStocks(subChildren), indexChangePct: boardWeightedChange(subChildren) },
             nodes: [subBoardNode],
           };
         }
@@ -578,7 +411,7 @@ export function MarketHeatmap({ locale }: { locale: Locale }) {
 
     // 板块标题栏涨跌幅直接用 API 快照值（服务端已按实时行情算好）
     for (const boardBox of boardBoxes) {
-      const boardChangePct = weightedAverageChange(boardBox.item.children);
+      const boardChangePct = boardWeightedChange(boardBox.item.children);
       const titleHeight = boardBox.width < 84 || boardBox.height < 54 ? 0 : clamp(Math.round(Math.min(Math.max(boardBox.height * 0.09, 14), 24)), 12, 24);
       const contentPadding = boardBox.width > 110 && boardBox.height > 90 ? 3 : 2;
       const contentX = boardBox.x + contentPadding;

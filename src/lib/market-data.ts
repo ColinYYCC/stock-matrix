@@ -12,6 +12,7 @@
  */
 import fallbackMarketSnapshot from "@/lib/data/stocks-fallback.json";
 import indexConstituents from "@/lib/data/index-constituents.json";
+import { summarizeStocks, weightedAverageChange } from "@/lib/market-stats";
 import { CST_OFFSET_MS } from "@/lib/trading-hours";
 import {
   discoverStocks,
@@ -156,8 +157,6 @@ const summaryCacheMs = 8_000;
 const sinaBatchSize = 220;
 /** 东方财富每批最多 300 只（改进：原项目 180） */
 const eastmoneyBatchSize = 300;
-/** 平盘阈值：涨跌幅绝对值 < 0.1% 视为平盘 */
-const flatThreshold = 0.1;
 /** 每批请求超时时间：5 秒（改进：原项目无超时保护） */
 const fetchTimeoutMs = 5_000;
 
@@ -849,10 +848,10 @@ async function fetchSummaryFromRemote(): Promise<MarketSummarySnapshot> {
  * 流程：跨日解锁 → 收盘锁 → TTL 内直接返回 → Promise 去重 → 失败回退旧缓存。
  * 收盘锁命中后不再发任何请求，直到 checkAndResetLockIfNewDay 跨日清缓存。
  */
-function createMarketCache<T extends { timestamp: number }>(
-  fetcher: () => Promise<T>,
+function createMarketCache<T extends { timestamp: number }, Args extends unknown[]>(
+  fetcher: (...args: Args) => Promise<T>,
   ttlMs: number
-): () => Promise<T> {
+): (...args: Args) => Promise<T> {
   let cache: T | null = null;
   let pending: Promise<T> | null = null;
 
@@ -861,7 +860,7 @@ function createMarketCache<T extends { timestamp: number }>(
     cache = null;
   });
 
-  return async function getCached(): Promise<T> {
+  return async function getCached(...args: Args): Promise<T> {
     const now = Date.now();
 
     // 先检查是否需要跨日解锁
@@ -886,7 +885,7 @@ function createMarketCache<T extends { timestamp: number }>(
       return pending;
     }
 
-    pending = fetcher()
+    pending = fetcher(...args)
       .then((snapshot) => {
         cache = snapshot;
         if (shouldLockAfterMarketClose() && !isMarketClosedAndLocked) {
@@ -907,7 +906,12 @@ function createMarketCache<T extends { timestamp: number }>(
   };
 }
 
-const getCachedQuotes = createMarketCache(() => fetchQuotesFromRemote(dynamicStocks), quoteCacheMs);
+// 股票名单由调用方显式传入（getTreemapData/getOverviewData 先 discoverStocks 再传参），
+// 不再依赖模块级全局变量，杜绝"绕过 discover 直接拿缓存"时静默使用旧名单
+const getCachedQuotes = createMarketCache(
+  (stocks: StockSnapshot[]) => fetchQuotesFromRemote(stocks),
+  quoteCacheMs
+);
 const getCachedSummary = createMarketCache(fetchSummaryFromRemote, summaryCacheMs);
 const getCachedMarketIndex = createMarketCache(fetchMarketIndex, quoteCacheMs);
 
@@ -956,65 +960,40 @@ function groupStocksByBoard(
     .sort((left, right) => right.value - left.value);
 }
 
-/** 统计涨/平/跌家数和成交额 */
+/** 统计涨/平/跌家数和成交额（算术在 market-stats，这里只负责从行情快照提取字段） */
 function summarizeMarketBreadth(
   stocks: StockSnapshot[],
   liveQuotes: Record<string, RemoteQuoteValue>,
   period: HeatmapPeriodKey
 ) {
-  let advanceCount = 0;
-  let flatCount = 0;
-  let declineCount = 0;
-  let turnoverAmount = 0;
-
-  for (const stock of stocks) {
+  const items = stocks.map((stock) => {
     const quote = liveQuotes[stock.code];
-    const changePct = extractPeriodChange(quote?.changes, period, stock.changePct);
-
-    // NaN 表示无数据，计入平盘（不误导用户）
-    if (Number.isNaN(changePct)) {
-      flatCount += 1;
-    } else if (changePct > flatThreshold) {
-      advanceCount += 1;
-    } else if (changePct < -flatThreshold) {
-      declineCount += 1;
-    } else {
-      flatCount += 1;
-    }
-
-    turnoverAmount += quote?.turnoverAmount ?? getStockTurnover(stock);
-  }
-
+    return {
+      changePct: extractPeriodChange(quote?.changes, period, stock.changePct),
+      turnoverAmount: quote?.turnoverAmount ?? getStockTurnover(stock),
+    };
+  });
   return {
-    advanceCount,
-    flatCount,
-    declineCount,
-    turnoverAmount,
+    ...summarizeStocks(items),
     turnoverPreviousAmount: Number.NaN,
     turnoverDelta: Number.NaN,
   };
 }
 
-/** 加权平均涨跌幅（按市值权重，跳过无数据的股票） */
+/** 加权平均涨跌幅（按市值权重；无有效数据返回 NaN，由调用方决定兜底） */
 function computeWeightedChange(
   stocks: StockSnapshot[],
   liveQuotes: Record<string, RemoteQuoteValue>,
   period: HeatmapPeriodKey
 ): number {
-  let weightedSum = 0;
-  let totalValue = 0;
-
-  for (const stock of stocks) {
+  const items = stocks.map((stock) => {
     const quote = liveQuotes[stock.code];
-    const value = getLiveStockAreaValue(stock, quote);
-    const changePct = extractPeriodChange(quote?.changes, period, stock.changePct);
-    // 跳过无数据的股票，不纳入加权计算
-    if (Number.isNaN(changePct)) continue;
-    weightedSum += changePct * value;
-    totalValue += value;
-  }
-
-  return totalValue > 0 ? weightedSum / totalValue : Number.NaN;
+    return {
+      value: getLiveStockAreaValue(stock, quote),
+      changePct: extractPeriodChange(quote?.changes, period, stock.changePct),
+    };
+  });
+  return weightedAverageChange(items);
 }
 
 // ============ 兜底函数 ============
@@ -1053,13 +1032,6 @@ function buildFallbackTreemap(
   };
 }
 
-// ============ 动态股票列表 + 按市场范围筛选 ============
-
-/** 获取热力图树图数据 */
-
-/** 动态股票列表缓存（由 discoverStocks 提供，包含运行时发现的新股） */
-let dynamicStocks: StockSnapshot[] = baselineStocks;
-
 // ============ 对外接口函数 ============
 
 /** 获取热力图树图数据 */
@@ -1067,11 +1039,11 @@ export async function getTreemapData(
   market: MarketKey,
   period: HeatmapPeriodKey = "day"
 ): Promise<TreemapResponse> {
-  // 先动态发现股票列表（含新股）
-  dynamicStocks = await discoverStocks();
+  // 先动态发现股票列表（含新股），显式传给行情缓存（不经过全局变量）
+  const stocks = await discoverStocks();
 
   const [quoteResult, summaryResult, indexResult] = await Promise.allSettled([
-    getCachedQuotes(),
+    getCachedQuotes(stocks),
     getCachedSummary(),
     getCachedMarketIndex(),
   ]);
@@ -1093,11 +1065,17 @@ export async function getTreemapData(
 
   hasLoggedFallbackWarning = false;
 
-  const marketStocks = filterByMarketScope(dynamicStocks, market);
+  const marketStocks = filterByMarketScope(stocks, market);
   const nodes = groupStocksByBoard(marketStocks, quoteResult.value.quotes, period);
   const computedSummary = summarizeMarketBreadth(marketStocks, quoteResult.value.quotes, period);
   const computedIndexChangePct = computeWeightedChange(marketStocks, quoteResult.value.quotes, period);
   const remoteSummary = summaryResult.status === "fulfilled" ? summaryResult.value : null;
+
+  // 「哪个数字优先采用」的策略收敛成两个命名开关（原来是 6 段重复的三重条件）：
+  // 涨跌家数只在「全市场 + 当日」采用同花顺官方口径（其他范围/周期官方没有对应数据），
+  // 成交额同花顺只提供全市场口径；其余一律用色块股票池现算，保证口径一致
+  const useRemoteBreadth = market === "all" && period === "day" && remoteSummary !== null;
+  const useRemoteTurnover = market === "all" && remoteSummary !== null;
 
   return {
     market,
@@ -1106,26 +1084,14 @@ export async function getTreemapData(
     stockCount: marketStocks.length,
     boardCount: nodes.length,
     summary: {
-      advanceCount:
-        market === "all" && period === "day" && remoteSummary
-          ? remoteSummary.advanceCount
-          : computedSummary.advanceCount,
-      flatCount:
-        market === "all" && period === "day" && remoteSummary
-          ? remoteSummary.flatCount
-          : computedSummary.flatCount,
-      declineCount:
-        market === "all" && period === "day" && remoteSummary
-          ? remoteSummary.declineCount
-          : computedSummary.declineCount,
-      turnoverAmount:
-        market === "all" && remoteSummary ? remoteSummary.turnoverAmount : computedSummary.turnoverAmount,
-      turnoverPreviousAmount:
-        market === "all" && remoteSummary
-          ? remoteSummary.turnoverPreviousAmount
-          : computedSummary.turnoverPreviousAmount,
-      turnoverDelta:
-        market === "all" && remoteSummary ? remoteSummary.turnoverDelta : computedSummary.turnoverDelta,
+      advanceCount: useRemoteBreadth ? remoteSummary.advanceCount : computedSummary.advanceCount,
+      flatCount: useRemoteBreadth ? remoteSummary.flatCount : computedSummary.flatCount,
+      declineCount: useRemoteBreadth ? remoteSummary.declineCount : computedSummary.declineCount,
+      turnoverAmount: useRemoteTurnover ? remoteSummary.turnoverAmount : computedSummary.turnoverAmount,
+      turnoverPreviousAmount: useRemoteTurnover
+        ? remoteSummary.turnoverPreviousAmount
+        : computedSummary.turnoverPreviousAmount,
+      turnoverDelta: useRemoteTurnover ? remoteSummary.turnoverDelta : computedSummary.turnoverDelta,
       indexChangePct: Number.isFinite(remoteIndexChangePct) ? remoteIndexChangePct : computedIndexChangePct,
     },
     nodes,
@@ -1137,11 +1103,11 @@ export async function getTreemapData(
 export async function getOverviewData(
   period: HeatmapPeriodKey = "day"
 ): Promise<MarketOverviewResponse> {
-  // 先动态发现股票列表（含新股）
-  dynamicStocks = await discoverStocks();
+  // 先动态发现股票列表（含新股），显式传给行情缓存（不经过全局变量）
+  const stocks = await discoverStocks();
 
   const [quoteResult, indexResult] = await Promise.allSettled([
-    getCachedQuotes(),
+    getCachedQuotes(stocks),
     getCachedMarketIndex(),
   ]);
 
@@ -1154,12 +1120,12 @@ export async function getOverviewData(
     }
 
     const fallbackMarkets: MarketOverviewItem[] = marketKeys.map((market) => {
-      const stocks = filterByMarketScope(dynamicStocks, market);
-      const changePct = computeWeightedChange(stocks, {}, period);
+      const marketStocks = filterByMarketScope(stocks, market);
+      const changePct = computeWeightedChange(marketStocks, {}, period);
       return {
         market,
         changePct: Number.isFinite(changePct) ? changePct : Number.NaN,
-        stockCount: stocks.length,
+        stockCount: marketStocks.length,
         updatedAt: fallbackSnapshotSeed.updatedAt,
       };
     });
@@ -1178,17 +1144,17 @@ export async function getOverviewData(
   const indexSummaries = indexResult.status === "fulfilled" ? indexResult.value.summaries : null;
 
   const markets: MarketOverviewItem[] = marketKeys.map((market) => {
-    const stocks = filterByMarketScope(dynamicStocks, market);
+    const marketStocks = filterByMarketScope(stocks, market);
     const remoteIndex = indexSummaries?.[market];
     const remoteIndexChange = extractPeriodChange(remoteIndex?.changes, period, Number.NaN);
     const changePct = Number.isFinite(remoteIndexChange)
       ? remoteIndexChange
-      : computeWeightedChange(stocks, liveQuotes, period);
+      : computeWeightedChange(marketStocks, liveQuotes, period);
 
     return {
       market,
       changePct: Number.isFinite(changePct) ? changePct : Number.NaN,
-      stockCount: stocks.length,
+      stockCount: marketStocks.length,
       updatedAt: quoteResult.value.updatedAt,
     };
   });
