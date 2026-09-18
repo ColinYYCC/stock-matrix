@@ -1,0 +1,16 @@
+// Cloudflare Workers 部署配置（配合 @opennextjs/cloudflare 使用）
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "stock-matrix",
+  "main": ".open-next/worker.js",
+  "compatibility_date": "2026-09-01",
+  // 让 Worker 能使用 Node.js 风格的 API（Next.js 服务端需要）
+  "compatibility_flags": ["nodejs_compat"],
+  "assets": {
+    "directory": ".open-next/assets",
+    "binding": "ASSETS"
+  },
+  "observability": {
+    "enabled": true
+  }
+}
