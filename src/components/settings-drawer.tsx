@@ -12,7 +12,7 @@ import {
 import { useEffect } from "react";
 import { cn } from "@/lib/utils";
 import type { HeatmapMessages } from "@/lib/i18n";
-import type { DisplayMode, PriceColorMode } from "@/types/heatmap";
+import type { DisplayMode, LabelSizeMode, PriceColorMode } from "@/types/heatmap";
 import type { DesignStyle } from "@/hooks/use-design-style";
 import { skins } from "@/components/skin";
 
@@ -33,6 +33,12 @@ type SettingsDrawerProps = {
   onDisplayModeChange: (mode: DisplayMode) => void;
   onPriceColorModeChange: (mode: PriceColorMode) => void;
   onDesignStyleChange: (style: DesignStyle) => void;
+  hideUnreadableTiles: boolean;
+  onHideUnreadableTilesChange: (value: boolean) => void;
+  labelSizeMode: LabelSizeMode;
+  onLabelSizeModeChange: (mode: LabelSizeMode) => void;
+  showPrice: boolean;
+  onShowPriceChange: (value: boolean) => void;
 };
 
 /** 设置面板：外观（界面风格/显示模式/涨跌颜色）、帮助、项目三个标签页 */
@@ -49,6 +55,12 @@ export function SettingsDrawer({
   onDisplayModeChange,
   onPriceColorModeChange,
   onDesignStyleChange,
+  hideUnreadableTiles,
+  onHideUnreadableTilesChange,
+  labelSizeMode,
+  onLabelSizeModeChange,
+  showPrice,
+  onShowPriceChange,
 }: SettingsDrawerProps) {
   // 打开时按 Esc 关闭面板
   useEffect(() => {
@@ -210,6 +222,98 @@ export function SettingsDrawer({
                       )}
                     >
                       <span className="font-semibold text-emerald-400">{messages.greenRiseRedFall}</span>
+                    </button>
+                  </div>
+                </section>
+
+                {/* 隐藏无字色块：主视图剔除"放不下名字"的色块，位置让给有名字的色块 */}
+                <section>
+                  <h3 className="text-sm font-semibold">{messages.hideUnreadableLabel}</h3>
+                  <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+                    {messages.hideUnreadableDescription}
+                  </p>
+                  <div className={skin.optionGroup}>
+                    <button
+                      type="button"
+                      onClick={() => onHideUnreadableTilesChange(true)}
+                      aria-pressed={hideUnreadableTiles}
+                      className={cn(
+                        skin.optionButtonBase,
+                        hideUnreadableTiles ? skin.optionButtonActive : skin.optionButtonInactive
+                      )}
+                    >
+                      {messages.hideUnreadableOn}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => onHideUnreadableTilesChange(false)}
+                      aria-pressed={!hideUnreadableTiles}
+                      className={cn(
+                        skin.optionButtonBase,
+                        !hideUnreadableTiles ? skin.optionButtonActive : skin.optionButtonInactive
+                      )}
+                    >
+                      {messages.hideUnreadableOff}
+                    </button>
+                  </div>
+                </section>
+
+                {/* 色块文字：字号档位（紧凑/标准/大字） */}
+                <section>
+                  <h3 className="text-sm font-semibold">{messages.labelSizeLabel}</h3>
+                  <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+                    {messages.labelSizeDescription}
+                  </p>
+                  <div className={skin.optionGroup}>
+                    {([
+                      ["compact", messages.labelSizeCompact],
+                      ["standard", messages.labelSizeStandard],
+                      ["roomy", messages.labelSizeRoomy],
+                    ] as Array<[LabelSizeMode, string]>).map(([mode, labelText]) => (
+                      <button
+                        key={mode}
+                        type="button"
+                        onClick={() => onLabelSizeModeChange(mode)}
+                        aria-pressed={labelSizeMode === mode}
+                        className={cn(
+                          skin.optionButtonBase,
+                          labelSizeMode === mode ? skin.optionButtonActive : skin.optionButtonInactive
+                        )}
+                      >
+                        {labelText}
+                      </button>
+                    ))}
+                  </div>
+                </section>
+
+                {/* 色块文字：价格行显示开关 */}
+                <section>
+                  <h3 className="text-sm font-semibold">{messages.showPriceLabel}</h3>
+                  <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+                    {messages.showPriceDescription}
+                  </p>
+                  <div className={skin.optionGroup}>
+                    <button
+                      type="button"
+                      onClick={() => onShowPriceChange(true)}
+                      aria-pressed={showPrice}
+                      className={cn(
+                        skin.optionButtonBase,
+                        showPrice ? skin.optionButtonActive : skin.optionButtonInactive
+                      )}
+                    >
+                      {messages.showPriceOn}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => onShowPriceChange(false)}
+                      aria-pressed={!showPrice}
+                      className={cn(
+                        skin.optionButtonBase,
+                        !showPrice ? skin.optionButtonActive : skin.optionButtonInactive
+                      )}
+                    >
+                      {messages.showPriceOff}
                     </button>
                   </div>
                 </section>

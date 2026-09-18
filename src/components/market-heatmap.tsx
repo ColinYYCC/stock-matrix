@@ -21,9 +21,9 @@ import { MobileStockSheet } from "@/components/mobile-stock-sheet";
 import { ColorLegend } from "@/components/color-legend";
 import { cn } from "@/lib/utils";
 import { clamp } from "@/lib/format";
-import { flatThreshold, groupStocksBySubBoard, summarizeStocks, weightedAverageChange } from "@/lib/market-stats";
+import { flatThreshold, summarizeStocks, weightedAverageChange } from "@/lib/market-stats";
 import { drawHeatmap, drawHeatmapHighlight, heatmapCanvasThemes } from "@/lib/canvas-render";
-import { binaryTreemap } from "@/lib/treemap";
+import { computeHeatmapLayout, computeLayoutHidingUnreadable } from "@/lib/heatmap-layout";
 import { getMessages } from "@/lib/i18n";
 import { useHeatmapData, tradingRefreshIntervalMs, idleRefreshIntervalMs } from "@/hooks/use-heatmap-data";
 import { useTradingHours } from "@/hooks/use-trading-hours";
@@ -44,6 +44,7 @@ import {
   type BoardRect,
   type DisplayMode,
   type HeatmapPeriodKey,
+  type LabelSizeMode,
   type Locale,
   type MarketKey,
   type PriceColorMode,
@@ -114,6 +115,11 @@ export function MarketHeatmap({ locale }: { locale: Locale }) {
   const [preferencesReady, setPreferencesReady] = useState(false);
   const [displayMode, setDisplayMode] = useState<DisplayMode>("dark");
   const [priceColorMode, setPriceColorMode] = useState<PriceColorMode>("red-rise");
+  // 隐藏无字色块：主视图剔除"放不下名字"的色块（默认开，设备偏好走 localStorage）
+  const [hideUnreadableTiles, setHideUnreadableTiles] = useState(true);
+  // 色块文字：字号档位与价格行开关（设备偏好走 localStorage；默认大字，可读性优先）
+  const [labelSizeMode, setLabelSizeMode] = useState<LabelSizeMode>("roomy");
+  const [showPrice, setShowPrice] = useState(true);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settingsTab, setSettingsTab] = useState<SettingsTab>("appearance");
   const { designStyle, setDesignStyle } = useDesignStyle();
@@ -172,6 +178,16 @@ export function MarketHeatmap({ locale }: { locale: Locale }) {
       const storedPriceColor = window.localStorage.getItem("stock-matrix-price-color");
       if (storedDisplayMode === "dark" || storedDisplayMode === "light") setDisplayMode(storedDisplayMode);
       if (storedPriceColor === "red-rise" || storedPriceColor === "green-rise") setPriceColorMode(storedPriceColor);
+      const storedHideUnreadable = window.localStorage.getItem("stock-matrix-hide-unreadable");
+      if (storedHideUnreadable === "true") setHideUnreadableTiles(true);
+      if (storedHideUnreadable === "false") setHideUnreadableTiles(false);
+      const storedLabelSize = window.localStorage.getItem("stock-matrix-label-size");
+      if (storedLabelSize === "compact" || storedLabelSize === "standard" || storedLabelSize === "roomy") {
+        setLabelSizeMode(storedLabelSize);
+      }
+      const storedShowPrice = window.localStorage.getItem("stock-matrix-show-price");
+      if (storedShowPrice === "true") setShowPrice(true);
+      if (storedShowPrice === "false") setShowPrice(false);
     } catch { /* 偏好设置是可选的 */ } finally {
       setPreferencesReady(true);
     }
@@ -189,6 +205,21 @@ export function MarketHeatmap({ locale }: { locale: Locale }) {
     if (!preferencesReady) return;
     try { window.localStorage.setItem("stock-matrix-price-color", priceColorMode); } catch { /* 可选 */ }
   }, [preferencesReady, priceColorMode]);
+
+  useEffect(() => {
+    if (!preferencesReady) return;
+    try { window.localStorage.setItem("stock-matrix-hide-unreadable", String(hideUnreadableTiles)); } catch { /* 可选 */ }
+  }, [preferencesReady, hideUnreadableTiles]);
+
+  useEffect(() => {
+    if (!preferencesReady) return;
+    try { window.localStorage.setItem("stock-matrix-label-size", labelSizeMode); } catch { /* 可选 */ }
+  }, [preferencesReady, labelSizeMode]);
+
+  useEffect(() => {
+    if (!preferencesReady) return;
+    try { window.localStorage.setItem("stock-matrix-show-price", String(showPrice)); } catch { /* 可选 */ }
+  }, [preferencesReady, showPrice]);
 
   // ============ URL 状态同步（P1-9：分享链接 / 刷新后保持视图） ============
   // 视图状态（市场/周期/板块/子板块/涨跌筛选）进 URL；显示模式等设备偏好仍走 localStorage。
@@ -393,100 +424,17 @@ export function MarketHeatmap({ locale }: { locale: Locale }) {
 
   // ============ 树图布局：位置计算（依赖 treemap 数据和画布尺寸） ============
   // treemapData 每 8s 轮询刷新，服务端会用实时价格重算流通市值（value），
-  // 所以行情刷新时色块大小会跟着变化。binaryTreemap 只在 visibleTreemapData
-  // 或画布尺寸变化时重算，不依赖前端 quotes。
+  // 所以行情刷新时色块大小会跟着变化。布局只在 visibleTreemapData、画布尺寸
+  // 或"隐藏无字色块"开关变化时重算，不依赖前端 quotes。
   const layoutPositions = useMemo(() => {
     if (!visibleTreemapData) {
       return { stockRects: [] as StockRect[], boardRects: [] as BoardRect[], subBoardRects: [] as SubBoardRect[] };
     }
-
-    const boardRects: BoardRect[] = [];
-    const subBoardRects: SubBoardRect[] = [];
-    const stockRects: StockRect[] = [];
-
-    const boardBoxes = binaryTreemap(
-      visibleTreemapData.nodes.map((board) => ({ item: board, value: board.value })),
-      0, 0, canvasSize.width, canvasSize.height, 6
-    );
-
-    // 板块标题栏涨跌幅直接用 API 快照值（服务端已按实时行情算好）
-    for (const boardBox of boardBoxes) {
-      const boardChangePct = boardWeightedChange(boardBox.item.children);
-      const titleHeight = boardBox.width < 84 || boardBox.height < 54 ? 0 : clamp(Math.round(Math.min(Math.max(boardBox.height * 0.09, 14), 24)), 12, 24);
-      const contentPadding = boardBox.width > 110 && boardBox.height > 90 ? 3 : 2;
-      const contentX = boardBox.x + contentPadding;
-      const contentY = boardBox.y + titleHeight + contentPadding;
-      const contentWidth = Math.max(0, boardBox.width - contentPadding * 2);
-      const contentHeight = Math.max(0, boardBox.height - titleHeight - contentPadding * 2);
-
-      boardRects.push({
-        name: boardBox.item.name, x: boardBox.x, y: boardBox.y, width: boardBox.width, height: boardBox.height,
-        stockCount: boardBox.item.stockCount, titleHeight, changePct: boardChangePct,
-      });
-
-      if (contentWidth <= 2 || contentHeight <= 2) continue;
-
-      const subBoards = groupStocksBySubBoard(boardBox.item.children);
-      const shouldNestSubBoards = subBoards.length > 1 || subBoardFilter !== null;
-
-      if (!shouldNestSubBoards) {
-        const stockBoxes = binaryTreemap(
-          boardBox.item.children.map((stock) => ({ item: stock, value: stock.value })),
-          contentX, contentY, contentWidth, contentHeight, 1.5
-        );
-        for (const stockBox of stockBoxes) {
-          stockRects.push({
-            code: stockBox.item.code, name: stockBox.item.name, boardName: boardBox.item.name,
-            subBoardName: stockBox.item.subBoardName, value: stockBox.item.value,
-            x: stockBox.x, y: stockBox.y, width: stockBox.width, height: stockBox.height,
-            price: stockBox.item.price, changePct: stockBox.item.changePct,
-          });
-        }
-        continue;
-      }
-
-      const subBoardBoxes = binaryTreemap(
-        subBoards.map((subBoard) => ({ item: subBoard, value: subBoard.value })),
-        contentX, contentY, contentWidth, contentHeight,
-        boardBox.width > 96 && boardBox.height > 72 ? 2 : 1
-      );
-
-      for (const subBoardBox of subBoardBoxes) {
-        const subTitleHeight = subBoardBox.width < 52 || subBoardBox.height < 34 ? 0 : clamp(Math.round(Math.min(Math.max(subBoardBox.height * 0.11, 10), 18)), 9, 18);
-        const subPadding = subBoardBox.width > 82 && subBoardBox.height > 56 ? 2 : 1;
-        const subContentX = subBoardBox.x + subPadding;
-        const subContentY = subBoardBox.y + subTitleHeight + subPadding;
-        const subContentWidth = Math.max(0, subBoardBox.width - subPadding * 2);
-        const subContentHeight = Math.max(0, subBoardBox.height - subTitleHeight - subPadding * 2);
-
-        subBoardRects.push({
-          name: subBoardBox.item.name, boardName: boardBox.item.name,
-          x: subBoardBox.x, y: subBoardBox.y, width: subBoardBox.width, height: subBoardBox.height,
-          stockCount: subBoardBox.item.stockCount, titleHeight: subTitleHeight, changePct: subBoardBox.item.changePct,
-        });
-
-        if (subContentWidth <= 2 || subContentHeight <= 2) continue;
-
-        const stockBoxes = binaryTreemap(
-          subBoardBox.item.children.map((stock) => ({ item: stock, value: stock.value })),
-          subContentX, subContentY, subContentWidth, subContentHeight,
-          subBoardBox.width > 56 && subBoardBox.height > 38 ? 1 : 0.5
-        );
-
-        for (const stockBox of stockBoxes) {
-          stockRects.push({
-            code: stockBox.item.code, name: stockBox.item.name, boardName: boardBox.item.name,
-            subBoardName: stockBox.item.subBoardName, value: stockBox.item.value,
-            x: stockBox.x, y: stockBox.y, width: stockBox.width, height: stockBox.height,
-            price: stockBox.item.price, changePct: stockBox.item.changePct,
-          });
-        }
-      }
-    }
-
-    return { stockRects, boardRects, subBoardRects };
-    // 只依赖 treemap API 返回的数据（含服务端算好的实时市值和涨跌幅）
-  }, [canvasSize.height, canvasSize.width, subBoardFilter, visibleTreemapData]);
+    // 开关开启：迭代剔除"放不下名字"的个股并重排（滚轮放大不召回，筛选板块/拉大窗口可召回）
+    return hideUnreadableTiles
+      ? computeLayoutHidingUnreadable(visibleTreemapData.nodes, canvasSize.width, canvasSize.height, subBoardFilter)
+      : computeHeatmapLayout(visibleTreemapData.nodes, canvasSize.width, canvasSize.height, subBoardFilter);
+  }, [canvasSize.height, canvasSize.width, subBoardFilter, visibleTreemapData, hideUnreadableTiles]);
 
   useEffect(() => {
     lastStockRectsRef.current = layoutPositions.stockRects;
@@ -681,7 +629,7 @@ export function MarketHeatmap({ locale }: { locale: Locale }) {
   // 非高亮依赖变化时，标记离屏底图需要重绘
   useEffect(() => {
     baseDirtyRef.current = true;
-  }, [canvasSize.height, canvasSize.width, heatmapCanvasTheme, layoutPositions.boardRects, layoutPositions.stockRects, layoutPositions.subBoardRects, priceColorMode, view.scale, view.x, view.y]);
+  }, [canvasSize.height, canvasSize.width, heatmapCanvasTheme, layoutPositions.boardRects, layoutPositions.stockRects, layoutPositions.subBoardRects, priceColorMode, labelSizeMode, showPrice, view.scale, view.x, view.y]);
 
   useEffect(() => {
     // 取消上一帧还没执行的绘制（多次状态变化合并成一次绘制）
@@ -710,6 +658,7 @@ export function MarketHeatmap({ locale }: { locale: Locale }) {
         drawHeatmap({
           context: offCtx, canvasWidth: canvasSize.width, canvasHeight: canvasSize.height, pixelRatio, view,
           theme: heatmapCanvasTheme, priceColorMode,
+          labelOptions: { sizeMode: labelSizeMode, showPrice },
           stockRects: layoutPositions.stockRects, boardRects: layoutPositions.boardRects, subBoardRects: layoutPositions.subBoardRects,
         });
       }
@@ -738,7 +687,7 @@ export function MarketHeatmap({ locale }: { locale: Locale }) {
       }
     };
   }, [
-    canvasSize.height, canvasSize.width, heatmapCanvasTheme, layoutPositions.boardRects, layoutPositions.stockRects, layoutPositions.subBoardRects, priceColorMode, view.scale, view.x, view.y,
+    canvasSize.height, canvasSize.width, heatmapCanvasTheme, layoutPositions.boardRects, layoutPositions.stockRects, layoutPositions.subBoardRects, priceColorMode, labelSizeMode, showPrice, view.scale, view.x, view.y,
     highlightedStock, activeBoardRect, activeSubBoardRect,
   ]);
 
@@ -1283,6 +1232,12 @@ export function MarketHeatmap({ locale }: { locale: Locale }) {
         onDisplayModeChange={setDisplayMode}
         onPriceColorModeChange={setPriceColorMode}
         onDesignStyleChange={setDesignStyle}
+        hideUnreadableTiles={hideUnreadableTiles}
+        onHideUnreadableTilesChange={setHideUnreadableTiles}
+        labelSizeMode={labelSizeMode}
+        onLabelSizeModeChange={setLabelSizeMode}
+        showPrice={showPrice}
+        onShowPriceChange={setShowPrice}
       />
     </div>
   );

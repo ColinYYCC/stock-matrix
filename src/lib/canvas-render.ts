@@ -8,7 +8,7 @@
  * - 独立模块，可单测
  * - 绘制函数参数化，不依赖 React 生命周期
  */
-import type { BoardRect, DisplayMode, PriceColorMode, StockRect, SubBoardRect } from "@/types/heatmap";
+import type { BoardRect, DisplayMode, LabelSizeMode, PriceColorMode, StockRect, SubBoardRect } from "@/types/heatmap";
 import type { DesignStyle } from "@/hooks/use-design-style";
 import { clamp, formatCompactChange, formatPrice } from "./format";
 import { getBoardHeaderColor, getHeatColor } from "./heatmap-color";
@@ -287,6 +287,48 @@ function fitsVertically(lineHeights: number[], lineGap: number, availableHeight:
   return total <= availableHeight + 0.5; // 0.5px 容差
 }
 
+/** 名字标签的可用空间（世界坐标）：画字与"隐藏无字色块"共用的同一把尺子 */
+export type LabelClipMetrics = {
+  displayWidth: number;
+  displayHeight: number;
+  clipPadding: number;
+  clipWidth: number;
+  clipHeight: number;
+};
+
+/** 计算个股色块文字标签的可用空间（阴影扩散预留计入垂直扣减，防止文字视觉溢出） */
+export function computeLabelClipMetrics(stockWidth: number, stockHeight: number, zoomScale: number): LabelClipMetrics {
+  const displayWidth = stockWidth * zoomScale;
+  const displayHeight = stockHeight * zoomScale;
+  const screenUnit = 1 / zoomScale;
+  // 增加 clipPadding 以容纳阴影扩散（核心修复：防止视觉溢出）
+  const clipPaddingPx = displayWidth > 110 ? 6 : displayWidth > 54 ? 4 : 3;
+  const clipPadding = clipPaddingPx * screenUnit;
+  // 可用高度额外扣除阴影预留，确保垂直方向不溢出
+  const clipWidth = Math.max(0, stockWidth - clipPadding * 2);
+  const clipHeight = Math.max(0, stockHeight - clipPadding * 2 - SHADOW_PADDING * 2 * screenUnit);
+  return { displayWidth, displayHeight, clipPadding, clipWidth, clipHeight };
+}
+
+/** 按标签可用空间判断该色块能否显示任何文字（名字/涨跌幅/价格） */
+export function isLabelVisible(metrics: LabelClipMetrics): boolean {
+  return metrics.displayWidth >= 16 && metrics.displayHeight >= 8 && metrics.clipWidth > 2 && metrics.clipHeight > 2;
+}
+
+/** 该色块在当前缩放下能否显示任何文字；布局层"隐藏无字色块"与画字共用同一判定 */
+export function canShowAnyLabel(stockWidth: number, stockHeight: number, zoomScale: number): boolean {
+  return isLabelVisible(computeLabelClipMetrics(stockWidth, stockHeight, zoomScale));
+}
+
+/** 色块文字标签配置：字号档位（用户可调）+ 是否显示价格行 */
+export type HeatmapLabelOptions = {
+  sizeMode: LabelSizeMode;
+  showPrice: boolean;
+};
+
+/** 字号档位系数：紧凑=接受更小的字换更多信息；大字=可读性优先，塞不下自动少显示一行 */
+const LABEL_SCALE: Record<LabelSizeMode, number> = { compact: 0.88, standard: 1, roomy: 1.15 };
+
 /**
  * 绘制单只股票的文字标签
  *
@@ -310,19 +352,24 @@ function fitsVertically(lineHeights: number[], lineGap: number, availableHeight:
  * - 每个多行模式先计算实际总高度，与 clipHeight 比较
  * - 超出时自动降级行数：三行→两行→单行
  * - 阴影预留 SHADOW_PADDING 防止视觉溢出
+ *
+ * 可读性下限（sqrt 布局后中块大量塞三行，字号曾被几何尺寸压到 7-8px 糊掉）：
+ * - Medium 档名字/涨跌幅下限提到 9px、价格下限 8px；下限也塞不下就自动降级行数
+ * - 字号档位（LABEL_SCALE）只缩放字号，不缩放分档门槛——删块判定（canShowAnyLabel）
+ *   与画字仍共用同一把 isLabelVisible 尺子，互不漂移
  */
-function drawStockLabel(context: CanvasRenderingContext2D, stock: StockRect, priceColorMode: PriceColorMode, zoomScale = 1) {
-  const displayWidth = stock.width * zoomScale;
-  const displayHeight = stock.height * zoomScale;
+function drawStockLabel(
+  context: CanvasRenderingContext2D,
+  stock: StockRect,
+  priceColorMode: PriceColorMode,
+  zoomScale: number,
+  labelOptions: HeatmapLabelOptions
+) {
+  const metrics = computeLabelClipMetrics(stock.width, stock.height, zoomScale);
+  if (!isLabelVisible(metrics)) return;
+  const { displayWidth, displayHeight, clipPadding, clipWidth, clipHeight } = metrics;
   const screenUnit = 1 / zoomScale;
-  // 增加 clipPadding 以容纳阴影扩散（核心修复：防止视觉溢出）
-  const clipPaddingPx = displayWidth > 110 ? 6 : displayWidth > 54 ? 4 : 3;
-  const clipPadding = clipPaddingPx * screenUnit;
-  // 可用高度额外扣除阴影预留，确保垂直方向不溢出
-  const clipWidth = Math.max(0, stock.width - clipPadding * 2);
-  const clipHeight = Math.max(0, stock.height - clipPadding * 2 - SHADOW_PADDING * 2 * screenUnit);
-
-  if (displayWidth < 16 || displayHeight < 8 || clipWidth <= 2 || clipHeight <= 2) return;
+  const labelScale = LABEL_SCALE[labelOptions.sizeMode];
 
   const hasLargeLabel = displayWidth >= 108 && displayHeight >= 58;
   const hasMediumLabel = displayWidth >= 50 && displayHeight >= 28;
@@ -341,18 +388,18 @@ function drawStockLabel(context: CanvasRenderingContext2D, stock: StockRect, pri
 
     if (hasLargeLabel) {
       const preferredTitleSize =
-        clamp(Math.floor(Math.min(displayWidth, displayHeight) * 0.26), 15, 30) * screenUnit;
+        clamp(Math.floor(Math.min(displayWidth, displayHeight) * 0.26), 15, 30) * screenUnit * labelScale;
       const titleSize = fitFontSizeToWidth(
         context, stock.name, 700,
         preferredTitleSize,
-        Math.max(12 * screenUnit, preferredTitleSize * 0.66),
+        Math.max(12 * screenUnit * labelScale, preferredTitleSize * 0.66),
         clipWidth
       );
       const detailSize = Math.min(
-        clamp(Math.floor(Math.min(displayWidth, displayHeight) * 0.19), 11, 23) * screenUnit,
+        clamp(Math.floor(Math.min(displayWidth, displayHeight) * 0.19), 11, 23) * screenUnit * labelScale,
         titleSize * 1.08
       );
-      const priceSize = Math.min(detailSize * 0.88, 14 * screenUnit);
+      const priceSize = Math.min(detailSize * 0.88, 14 * screenUnit * labelScale);
       const centerX = stock.x + stock.width / 2;
       const centerY = stock.y + stock.height / 2;
       const lineGap = 2 * screenUnit;
@@ -360,10 +407,10 @@ function drawStockLabel(context: CanvasRenderingContext2D, stock: StockRect, pri
       context.textAlign = "center";
       context.textBaseline = "middle";
 
-      // 核心修复：先计算实际内容高度，再决定显示几行
+      // 核心修复：先计算实际内容高度，再决定显示几行；价格行可被用户开关关掉
       const threeLineHeights = [titleSize, detailSize, priceSize];
       const twoLineHeights = [titleSize, detailSize];
-      const canFitThreeLines = fitsVertically(threeLineHeights, lineGap, clipHeight);
+      const canFitThreeLines = labelOptions.showPrice && fitsVertically(threeLineHeights, lineGap, clipHeight);
       const canFitTwoLines = fitsVertically(twoLineHeights, lineGap, clipHeight);
 
       if (canFitThreeLines) {
@@ -404,10 +451,15 @@ function drawStockLabel(context: CanvasRenderingContext2D, stock: StockRect, pri
     }
 
     if (hasMediumLabel) {
-      // Medium: 全部上下左右居中
-      const preferredTitleSize = clamp(Math.floor(Math.min(displayWidth * 0.18, displayHeight * 0.40)), 8, 15) * screenUnit;
-      const titleSize = fitFontSizeToWidth(context, stock.name, 700, preferredTitleSize, Math.max(7 * screenUnit, preferredTitleSize * 0.70), clipWidth);
-      const detailSize = Math.min(clamp(Math.floor(displayHeight * 0.30), 7, 12) * screenUnit, titleSize * 1.05);
+      // Medium: 全部上下左右居中；可读性下限 9px（名字/涨跌幅），下限塞不下自动降级行数
+      const preferredTitleSize = clamp(Math.floor(Math.min(displayWidth * 0.18, displayHeight * 0.40)), 8, 15) * screenUnit * labelScale;
+      const titleSize = fitFontSizeToWidth(
+        context, stock.name, 700,
+        preferredTitleSize,
+        Math.max(9 * screenUnit * labelScale, preferredTitleSize * 0.70),
+        clipWidth
+      );
+      const detailSize = Math.min(clamp(Math.floor(displayHeight * 0.30), 9, 12) * screenUnit * labelScale, titleSize * 1.05);
       const centerX = stock.x + stock.width / 2;
       const centerY = stock.y + stock.height / 2;
       const mediumLineGap = 2 * screenUnit;
@@ -415,11 +467,11 @@ function drawStockLabel(context: CanvasRenderingContext2D, stock: StockRect, pri
       context.textAlign = "center";
       context.textBaseline = "middle";
 
-      // 核心修复：用实际内容高度决定显示几行，而非固定阈值
-      const priceSize = Math.min(detailSize * 0.88, 12 * screenUnit);
+      // 核心修复：用实际内容高度决定显示几行，而非固定阈值；价格行下限 8px，可被开关关掉
+      const priceSize = Math.max(8 * screenUnit * labelScale, Math.min(detailSize * 0.88, 12 * screenUnit * labelScale));
       const threeLineHeights = [titleSize, detailSize, priceSize];
       const twoLineHeights = [titleSize, detailSize];
-      const canFitThreeLines = fitsVertically(threeLineHeights, mediumLineGap, clipHeight);
+      const canFitThreeLines = labelOptions.showPrice && fitsVertically(threeLineHeights, mediumLineGap, clipHeight);
       const canFitTwoLines = fitsVertically(twoLineHeights, mediumLineGap, clipHeight);
 
       if (canFitThreeLines) {
@@ -520,6 +572,8 @@ export type DrawHeatmapParams = {
   view: { scale: number; x: number; y: number };
   theme: HeatmapCanvasTheme;
   priceColorMode: PriceColorMode;
+  /** 色块文字配置（字号档位 + 价格行开关），来自设置面板 */
+  labelOptions: HeatmapLabelOptions;
   stockRects: StockRect[];
   boardRects: BoardRect[];
   subBoardRects: SubBoardRect[];
@@ -542,7 +596,7 @@ export type DrawHeatmapParams = {
  * 本函数画的是不含高亮的底图（离屏缓存方案）。
  */
 export function drawHeatmap(params: DrawHeatmapParams) {
-  const { context, canvasWidth, canvasHeight, pixelRatio, view, theme, priceColorMode, stockRects, boardRects, subBoardRects } = params;
+  const { context, canvasWidth, canvasHeight, pixelRatio, view, theme, priceColorMode, labelOptions, stockRects, boardRects, subBoardRects } = params;
 
   // 1. 设置 Canvas 尺寸（高清渲染）
   context.setTransform(1, 0, 0, 1, 0, 0);
@@ -577,7 +631,7 @@ export function drawHeatmap(params: DrawHeatmapParams) {
   for (const stock of stockRects) {
     context.fillStyle = getHeatColor(stock.changePct, priceColorMode);
     fillRoundRect(context, stock.x, stock.y, stock.width, stock.height, LIQUID_GLASS_RADIUS.stock);
-    drawStockLabel(context, stock, priceColorMode, view.scale);
+    drawStockLabel(context, stock, priceColorMode, view.scale, labelOptions);
   }
 
   // 7. 遍历二级板块 → 绘制标题栏 + 边框

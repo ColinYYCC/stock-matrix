@@ -26,6 +26,11 @@ export type HeatmapPeriodKey = (typeof heatmapPeriodKeys)[number];
 /** 涨跌颜色模式：红涨绿跌 / 绿涨红跌 */
 export type PriceColorMode = "red-rise" | "green-rise";
 
+// ============ 色块文字字号档位 ============
+
+/** 紧凑=接受更小的字换更多信息；大字=可读性优先 */
+export type LabelSizeMode = "compact" | "standard" | "roomy";
+
 // ============ 显示模式 ============
 
 /** 暗色 / 亮色 */
