@@ -19,9 +19,14 @@ export function getSparklineUrl(code: string) {
   return `https://webquotepic.eastmoney.com/GetPic.aspx?nid=${marketId}.${symbol}&imageType=RJY`;
 }
 
-/** 获取新浪日线 K 线图 URL（近期日 K 线） */
+/**
+ * 获取日线 K 线图 URL：走自家代理接口 /api/chart/kline（不再直连新浪图床）。
+ * 原因见 src/app/api/chart/kline/route.ts 头注释：新浪直连慢且只缓存 60 秒，
+ * 自家接口带缓存头 + 同域并发，第二次看同一只股票秒出。
+ * 详情面板（inspector.tsx）与移动端底部弹层（mobile-stock-sheet.tsx）共用本函数。
+ */
 export function getDailyKlineUrl(code: string) {
   const { symbol, market } = parseStockCode(code);
   const marketPrefix = market === "SH" ? "sh" : market === "SZ" ? "sz" : "bj";
-  return `https://image.sinajs.cn/newchart/daily/n/${marketPrefix}${symbol}.gif`;
+  return `/api/chart/kline?code=${marketPrefix}${symbol}`;
 }
