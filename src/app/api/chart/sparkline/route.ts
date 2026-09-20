@@ -40,7 +40,10 @@ export async function GET(request: NextRequest) {
     const upstream = await fetch(
       `${UPSTREAM_BASE}?nid=${marketId}.${symbol}&imageType=RJY`,
       {
-        cache: "no-store",
+        // Next.js 数据缓存：60 秒内同一张图全站只真正拉一次上游
+        //（跨 serverless 实例共享）。实测只靠响应头的 s-maxage 在 Vercel
+        // 边缘缓存不生效，必须在这里缓存上游结果。
+        next: { revalidate: 60 },
         // 上游挂掉时快速失败，不让访客干等
         signal: AbortSignal.timeout(8000),
       }

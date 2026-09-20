@@ -37,7 +37,7 @@ describe("GET /api/chart/kline", () => {
     expect(await response.text()).toBe("GIFBYTES");
     expect(fetchMock).toHaveBeenCalledWith(
       "https://image.sinajs.cn/newchart/daily/n/sh688981.gif",
-      expect.objectContaining({ cache: "no-store" })
+      expect.objectContaining({ next: { revalidate: 60 } })
     );
   });
 
