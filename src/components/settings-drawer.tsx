@@ -9,7 +9,7 @@ import {
   Info,
 } from "lucide-react";
 
-import { useEffect } from "react";
+import { memo, useEffect } from "react";
 import { cn } from "@/lib/utils";
 import type { HeatmapMessages } from "@/lib/i18n";
 import type { DisplayMode, LabelSizeMode, PriceColorMode } from "@/types/heatmap";
@@ -41,8 +41,13 @@ type SettingsDrawerProps = {
   onShowPriceChange: (value: boolean) => void;
 };
 
-/** 设置面板：外观（界面风格/显示模式/涨跌颜色）、帮助、项目三个标签页 */
-export function SettingsDrawer({
+/**
+ * 设置面板：外观（界面风格/显示模式/涨跌颜色）、帮助、项目三个标签页
+ *
+ * memo：画布悬停换格只改 hover 状态，本组件 props 不变，整体跳过重渲染。
+ * 回调引用由父组件 useCallback 保证稳定。
+ */
+export const SettingsDrawer = memo(function SettingsDrawer({
   open,
   tab,
   messages,
@@ -354,4 +359,4 @@ export function SettingsDrawer({
       </section>
     </div>
   );
-}
+});

@@ -1,6 +1,7 @@
 "use client";
 
 import { TrendingDown, TrendingUp, Info, Share2, Loader2 } from "lucide-react";
+import { memo } from "react";
 
 import { cn } from "@/lib/utils";
 import { formatCompactChange } from "@/lib/format";
@@ -22,8 +23,10 @@ import { skins } from "@/components/skin";
  * classic / ios26 双皮肤共用一个组件，样式差异全部来自 skin.ts。
  * 刻度放在渐变条下方而不是叠在条内：白字叠在浅绿端只有 3.4:1 对比度，
  * 独立文字用主题 muted-foreground 色，两种主题下都稳定达标。
+ *
+ * memo：画布悬停换格只改 hover 状态，本组件 props 不变，整体跳过重渲染。
  */
-export function ColorLegend({
+export const ColorLegend = memo(function ColorLegend({
   messages,
   priceColorMode,
   designStyle,
@@ -136,4 +139,4 @@ export function ColorLegend({
       </div>
     </div>
   );
-}
+});

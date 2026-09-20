@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { memo, useEffect } from "react";
 import { Maximize2, RotateCcw, Settings2, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -111,8 +111,13 @@ type SidebarProps = {
   onCloseSidebar: () => void;
 };
 
-/** 侧边栏组件：市场切换、周期切换、筛选器、市场概览 */
-export function Sidebar({
+/**
+ * 侧边栏组件：市场切换、周期切换、筛选器、市场概览
+ *
+ * memo：画布悬停换格只改 hover 状态，本组件 props 不变，整体跳过重渲染。
+ * 回调引用由父组件 useCallback 保证稳定。
+ */
+export const Sidebar = memo(function Sidebar({
   messages,
   locale,
   market,
@@ -478,4 +483,4 @@ export function Sidebar({
       </aside>
     </>
   );
-}
+});
