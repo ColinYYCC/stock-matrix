@@ -7,11 +7,22 @@
 import type { PriceColorMode } from "@/types/heatmap";
 import { clamp } from "./format";
 
-/** 涨跌幅的颜色刻度（用于图例渐变） */
-export const colorLegendSteps = [-4, -3, -2, -1, 0, 1, 2, 3, 4] as const;
+/**
+ * 图例渐变的取色点：全部来自 getHeatColor，条上每个位置的颜色都与画布色块精确一致。
+ * 两端 -10/+10 保证最深色可见；±4 以内加密取点，保证 0 处的平盘灰和 ±1% 的快速过渡被忠实呈现。
+ */
+export const colorLegendSteps = [-10, -4, -3, -2, -1, 0, 1, 2, 3, 4, 10] as const;
 
-/** 图例上显示的刻度值 */
-export const legendTicks = [-4, -2, 0, 2, 4] as const;
+/** 图例上显示的刻度值：按真实比例落在条上（-8 → 10%，0 → 50%，+8 → 90%），手机窄条上不重叠 */
+export const legendTicks = [-8, -4, 0, 4, 8] as const;
+
+/**
+ * 涨跌幅在图例条上的水平位置（0~100 百分比）。
+ * 渐变取色点和刻度文字共用这一个定位公式，保证两者永远对齐。
+ */
+export function legendPosition(changePct: number): number {
+  return ((clamp(changePct, -COLOR_LIMIT, COLOR_LIMIT) + COLOR_LIMIT) / (COLOR_LIMIT * 2)) * 100;
+}
 
 /** 平盘阈值：涨跌幅绝对值小于此值视为平盘（仅 0.00% 显示灰色） */
 /** 颜色映射的平盘阈值：涨跌幅绝对值小于此值时显示灰色 */
@@ -93,12 +104,15 @@ export function getBoardHeaderColor(changePct: number, colorMode: PriceColorMode
 /**
  * 生成图例渐变的 CSS background 值
  */
+/**
+ * 生成图例渐变的 CSS background 值。
+ * 条上每个位置的颜色 = getHeatColor(对应涨跌幅)，与画布色块精确一致；
+ * 定位与刻度共用 legendPosition，永远对齐。
+ * 显式声明 in oklab 插值：锁定感知均匀过渡（现代浏览器默认已是 oklab，此处防旧环境回退 sRGB 直插发暗）。
+ */
 export function getLegendGradient(colorMode: PriceColorMode): string {
-  return `linear-gradient(to right, ${colorLegendSteps
-    .map((step, index) => {
-      const position = (index / (colorLegendSteps.length - 1)) * 100;
-      return `${getHeatColor(step, colorMode)} ${position.toFixed(2)}%`;
-    })
+  return `linear-gradient(in oklab to right, ${colorLegendSteps
+    .map((step) => `${getHeatColor(step, colorMode)} ${legendPosition(step).toFixed(2)}%`)
     .join(", ")})`;
 }
 

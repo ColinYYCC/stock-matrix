@@ -8,6 +8,7 @@ import {
   getLegendGradient,
   getRiseTextClass,
   getFallTextClass,
+  legendPosition,
   legendTicks,
 } from "@/lib/heatmap-color";
 import type { HeatmapMessages } from "@/lib/i18n";
@@ -98,9 +99,16 @@ export function ColorLegend({
                 className="h-3.5 w-full rounded-full shadow-[inset_0_0_0_1px_rgba(255,255,255,0.06)]"
                 style={{ background: legendGradient }}
               />
-              <div className="mt-0.5 flex items-center justify-between text-[10px] font-semibold tabular-nums leading-none text-muted-foreground">
+              {/* 刻度按真实涨跌幅比例绝对定位，与上方渐变条的取色点共用 legendPosition，永远对齐 */}
+              <div className="relative mt-0.5 h-2.5 text-[10px] font-semibold tabular-nums leading-none text-muted-foreground">
                 {legendTicks.map((tick) => (
-                  <span key={tick}>{tick === 0 ? "0" : formatCompactChange(tick)}</span>
+                  <span
+                    key={tick}
+                    className="absolute -translate-x-1/2"
+                    style={{ left: `${legendPosition(tick)}%` }}
+                  >
+                    {tick === 0 ? "0" : formatCompactChange(tick)}
+                  </span>
                 ))}
               </div>
             </div>

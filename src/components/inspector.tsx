@@ -77,6 +77,8 @@ const StockListItem = memo(function StockListItem({
         )}
       >
         {name}
+        {/* 股票代码跟在名字后面：字体与名字一致（与头部主名字的样式保持同一套） */}
+        <span className="ml-1.5">{code}</span>
       </span>
       <img
         src={getSparklineUrl(code)}
@@ -130,8 +132,10 @@ export const Inspector = forwardRef<HTMLDivElement, InspectorProps>(function Ins
             </p>
             <div className="mt-2.5 grid grid-cols-[minmax(0,1fr)_94px] items-end gap-3">
               <div className="min-w-0">
+                {/* 股票代码跟在名字后面：字体与名字一致，仅留一点间隔 */}
                 <p className="text-[18px] font-bold leading-[1.08] text-white [word-break:keep-all]">
                   {stock.name}
+                  <span className="ml-1.5">{stock.code}</span>
                 </p>
                 <img
                   src={getSparklineUrl(stock.code)}
