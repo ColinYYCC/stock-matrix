@@ -237,8 +237,9 @@ export function MarketHeatmap({ locale }: { locale: Locale }) {
     if (typeof urlMarket === "string" && isMarketKey(urlMarket)) setMarket(urlMarket);
     if (typeof urlPeriod === "string" && isHeatmapPeriodKey(urlPeriod)) setPeriod(urlPeriod);
     if (urlBoard) setBoardFilter(urlBoard);
-    // 子板块只在指定了板块时才有意义，避免出现挂在"全部板块"下的无效筛选
-    if (urlBoard && urlSubBoard) setSubBoardFilter(urlSubBoard);
+    // 子板块筛选独立于板块筛选：主板（全部板块）下也能直接筛选子板块，
+    // 因此 URL 可能只有 subBoard 没有 board
+    if (urlSubBoard) setSubBoardFilter(urlSubBoard);
     if (urlTrend === risingOnlyValue || urlTrend === fallingOnlyValue) setTrendFilter(urlTrend);
 
     setUrlReady(true);
@@ -322,14 +323,17 @@ export function MarketHeatmap({ locale }: { locale: Locale }) {
     if (!treemapData.nodes.some((node) => node.name === boardFilter)) setBoardFilter(allBoardsValue);
   }, [boardFilter, treemapData]);
 
-  // 子板块筛选失效保护：板块切换后，如果当前子板块不存在于新板块中，则重置
+  // 子板块筛选失效保护：市场范围或板块切换后，如果当前范围内已没有该子板块的股票，则重置
   useEffect(() => {
-    if (!subBoardFilter || !treemapData || boardFilter === allBoardsValue) return;
-    const board = treemapData.nodes.find((node) => node.name === boardFilter);
-    if (!board) { setSubBoardFilter(null); return; }
-    if (!board.children.some((stock) => (stock.subBoardName || stock.boardName) === subBoardFilter)) {
-      setSubBoardFilter(null);
-    }
+    if (!subBoardFilter || !treemapData) return;
+    // 主板（全部板块）下在整个市场里找；选定板块时只在该板块里找
+    const candidateBoards = boardFilter === allBoardsValue
+      ? treemapData.nodes
+      : treemapData.nodes.filter((node) => node.name === boardFilter);
+    const exists = candidateBoards.some((board) =>
+      board.children.some((stock) => (stock.subBoardName || stock.boardName) === subBoardFilter)
+    );
+    if (!exists) setSubBoardFilter(null);
   }, [boardFilter, subBoardFilter, treemapData]);
 
   useEffect(() => {
@@ -378,24 +382,50 @@ export function MarketHeatmap({ locale }: { locale: Locale }) {
       }
     }
 
-    // 子板块筛选：在大板块筛选基础上，进一步只保留该子板块下的股票
-    if (boardFilter !== allBoardsValue && subBoardFilter) {
-      const board = result.nodes.find((node) => node.name === boardFilter);
-      if (board) {
-        const subChildren = board.children.filter((stock) => (stock.subBoardName || stock.boardName) === subBoardFilter);
-        if (subChildren.length > 0) {
-          const subBoardNode = {
-            ...board,
-            children: subChildren,
-            stockCount: subChildren.length,
-            value: subChildren.reduce((sum, stock) => sum + stock.value, 0),
-          };
+    // 子板块筛选：
+    // - 选定大板块时：在该板块内只保留该子板块的股票（原有行为）；
+    // - 主板（全部板块）下也允许直接筛选：把全市场该子板块的股票聚成单个板块展示，
+    //   主视图双击二级板块标题即可直达，无需先进入大板块
+    if (subBoardFilter) {
+      const matchSubBoard = (stock: { boardName: string; subBoardName: string }) =>
+        (stock.subBoardName || stock.boardName) === subBoardFilter;
+
+      if (boardFilter !== allBoardsValue) {
+        const board = result.nodes.find((node) => node.name === boardFilter);
+        if (board) {
+          const subChildren = board.children.filter(matchSubBoard);
+          if (subChildren.length > 0) {
+            const subBoardNode = {
+              ...board,
+              children: subChildren,
+              stockCount: subChildren.length,
+              value: subChildren.reduce((sum, stock) => sum + stock.value, 0),
+            };
+            result = {
+              ...result,
+              stockCount: subChildren.length,
+              boardCount: 1,
+              summary: { ...result.summary, ...summarizeStocks(subChildren), indexChangePct: boardWeightedChange(subChildren) },
+              nodes: [subBoardNode],
+            };
+          }
+        }
+      } else {
+        const collected = result.nodes.flatMap((board) => board.children.filter(matchSubBoard));
+        if (collected.length > 0) {
           result = {
             ...result,
-            stockCount: subChildren.length,
+            stockCount: collected.length,
             boardCount: 1,
-            summary: { ...result.summary, ...summarizeStocks(subChildren), indexChangePct: boardWeightedChange(subChildren) },
-            nodes: [subBoardNode],
+            summary: { ...result.summary, ...summarizeStocks(collected), indexChangePct: boardWeightedChange(collected) },
+            nodes: [{
+              // code 仅用作前端 key，子板块名可直接充当（板块名是中文，不会与 8 位哈希码冲突）
+              code: subBoardFilter,
+              name: subBoardFilter,
+              value: collected.reduce((sum, stock) => sum + stock.value, 0),
+              stockCount: collected.length,
+              children: collected,
+            }],
           };
         }
       }
@@ -467,9 +497,12 @@ export function MarketHeatmap({ locale }: { locale: Locale }) {
   const activeBoardStocks = useMemo(() => {
     if (!activeBoardName || !visibleTreemapData) return [];
     const board = visibleTreemapData.nodes.find((node) => node.name === activeBoardName);
-    if (!board) return [];
+    // 主板下直筛子板块时，图上唯一的节点是子板块名（如"白酒"），与个股的 boardName（"食品饮料"）对不上；
+    // 此时可见的全部股票就是该子板块的成员，直接整体作为面板列表
+    const children = board ? board.children : visibleTreemapData.nodes.flatMap((node) => node.children);
+    if (children.length === 0) return [];
     // treemap 节点自带服务端实时价格/涨跌幅，无需再合并 quotes
-    return board.children
+    return children
       .map((stock) => {
         return { code: stock.code, name: stock.name, subBoardName: stock.subBoardName, price: stock.price, changePct: stock.changePct };
       })
