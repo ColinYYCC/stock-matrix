@@ -51,10 +51,6 @@ gen-mockup.py
 .edgeone/*
 .tef_dist/*
 
-# Cloudflare 部署（OpenNext 构建产物 + wrangler 本地状态）
-.open-next/
-.wrangler/
-
 # CodeBuddy 本地工具数据（记忆、配置、技能，非项目代码）
 .codebuddy/
   
