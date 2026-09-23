@@ -421,7 +421,10 @@ export function MarketHeatmap({ locale }: { locale: Locale }) {
             nodes: [{
               // code 仅用作前端 key，子板块名可直接充当（板块名是中文，不会与 8 位哈希码冲突）
               code: subBoardFilter,
-              name: subBoardFilter,
+              // 一级标题用父板块名（如"贵金属"→"资源周期"），与"先进大板块再筛子板块"路径的
+              // 标题保持一致；否则画布会画出"小金属/小金属"两条重复标题。
+              // 同一子板块的股票同属一个父板块，取第一只股票的 boardName 即可
+              name: collected[0].boardName,
               value: collected.reduce((sum, stock) => sum + stock.value, 0),
               stockCount: collected.length,
               children: collected,
@@ -497,8 +500,8 @@ export function MarketHeatmap({ locale }: { locale: Locale }) {
   const activeBoardStocks = useMemo(() => {
     if (!activeBoardName || !visibleTreemapData) return [];
     const board = visibleTreemapData.nodes.find((node) => node.name === activeBoardName);
-    // 主板下直筛子板块时，图上唯一的节点是子板块名（如"白酒"），与个股的 boardName（"食品饮料"）对不上；
-    // 此时可见的全部股票就是该子板块的成员，直接整体作为面板列表
+    // 兜底：hover 名字与节点对不上时（异常数据），可见的全部股票就是当前筛选的成员，
+    // 直接整体作为面板列表
     const children = board ? board.children : visibleTreemapData.nodes.flatMap((node) => node.children);
     if (children.length === 0) return [];
     // treemap 节点自带服务端实时价格/涨跌幅，无需再合并 quotes
