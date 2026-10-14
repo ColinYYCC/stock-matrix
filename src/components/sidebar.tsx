@@ -1,6 +1,6 @@
 "use client";
 
-import { memo, useEffect } from "react";
+import { memo, useEffect, useId } from "react";
 import { Maximize2, RotateCcw, Settings2, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -144,6 +144,9 @@ export const Sidebar = memo(function Sidebar({
   onOpenSettings,
   onCloseSidebar,
 }: SidebarProps) {
+  // 按钮组没有表单控件可关联，用 useId 生成唯一 id 让文字与按钮组互相绑定
+  const trendGroupId = useId();
+
   // 移动端抽屉打开时，按 Esc 关闭（桌面端常驻，不绑定）
   useEffect(() => {
     if (!sidebarOpen) return;
@@ -312,13 +315,13 @@ export const Sidebar = memo(function Sidebar({
 
           {/* 涨跌筛选 */}
           <div className={skin.groupCard}>
-            <label
-              htmlFor="trend-filter"
+            <span
+              id={trendGroupId}
               className="block font-semibold uppercase tracking-[0.12em] text-muted-foreground text-[10px]"
             >
               {messages.trendFilterLabel}
-            </label>
-            <div className={skin.trendSegment}>
+            </span>
+            <div className={skin.trendSegment} role="group" aria-labelledby={trendGroupId}>
               {[
                 { value: allTrendsValue, label: messages.allTrends },
                 { value: risingOnlyValue, label: messages.risingOnly },
