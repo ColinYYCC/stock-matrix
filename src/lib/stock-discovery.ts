@@ -232,10 +232,21 @@ const CLIST_HOSTS = [
 const CLIST_PATH = "/api/qt/clist/get";
 const CLIST_FS = "m:0+t:6,m:0+t:80,m:1+t:2,m:1+t:23,m:0+t:81+s:2048";
 const CLIST_PAGE_SIZE = 100;
-const CLIST_CONCURRENCY = 4;
+/**
+ * 分页并发数。原值 4 意味着 55 页要串行走 14 轮，实测回源耗时因此高达 112 秒，
+ * 是"热力图价格慢半拍"的主要来源。提到 10 后降到 6 轮。
+ * ponytail: 刻意不一次拉到 55（全并发）—— 并发越高越容易撞东财限流，
+ * 先用 10 观测，若 Vercel 日志里 discoveryMs 仍偏大再往上调。
+ */
+const CLIST_CONCURRENCY = 10;
 const CLIST_FIELDS = "f2,f3,f6,f12,f13,f14,f18,f20,f21,f24,f25,f100,f109,f110,f124";
 const CLIST_UT = "bd1d9ddb04089700cf9c27f6f7426281";
-const CLIST_TIMEOUT_MS = 15_000;
+/**
+ * 单页超时。原值 15 秒：一轮里只要有一页卡住，整轮就白等 15 秒，
+ * 配上 3 次重试最坏 45 秒，是 14 轮串行总耗时飙到 112 秒的放大器。
+ * 降到 5 秒与行情抓取（fetchTimeoutMs）对齐，卡住的页快速失败、换 host 重试。
+ */
+const CLIST_TIMEOUT_MS = 5_000;
 const CLIST_MAX_RETRIES = 3;
 
 const CLIST_HEADERS = {

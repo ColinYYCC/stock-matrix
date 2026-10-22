@@ -134,6 +134,8 @@ export function MobileStockSheet({
                     key={item.code}
                     onClick={() => onSelectStock(item.code)}
                     className={cn(
+                      // 同桌面详情面板：屏幕外行跳过渲染，避免一次挂出几百张分时图
+                      "[content-visibility:auto] [contain-intrinsic-size:auto_42px]",
                       skin.listRowBase,
                       isActive ? skin.listRowActive : skin.listRowInactive
                     )}

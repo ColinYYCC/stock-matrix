@@ -166,6 +166,9 @@ export function useHeatmapData(options: {
       }
     }, [market, period, urlReady]),
     pollIntervalMs,
+    true,
+    // 挂载不立刻执行：上面已有专门的首屏加载 effect，否则首屏同一份 1MB 数据会下两遍
+    false,
   );
 
   usePollWhileVisible(

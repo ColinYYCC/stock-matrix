@@ -11,11 +11,14 @@ import { useEffect } from "react";
  * @param enabled 是否启用定时轮询（默认 true）。设为 false 时不启动定时器。
  *                注意：无论 enabled 是否为 true，用户切回页面时都会立即执行一次 task，
  *                确保返回页面时数据是最新的。
+ * @param immediate 挂载时是否立刻执行一次 task（默认 true）。当调用方已有独立的
+ *                  首屏加载逻辑时传 false，避免首屏同一份数据被下载两遍。
  */
 export function usePollWhileVisible(
   task: () => void | Promise<void>,
   intervalMs: number,
   enabled: boolean = true,
+  immediate: boolean = true,
 ) {
   useEffect(() => {
     if (typeof document === "undefined") {
@@ -55,9 +58,9 @@ export function usePollWhileVisible(
       }
     };
 
-    // 页面可见时：先刷新一次，再按需启动定时轮询
+    // 页面可见时：按需先刷新一次，再启动定时轮询
     if (!document.hidden) {
-      run();
+      if (immediate) run();
       start();
     }
     // 无论 enabled 是否为 true，都要监听 visibilitychange
@@ -69,5 +72,5 @@ export function usePollWhileVisible(
       stop();
       document.removeEventListener("visibilitychange", onVisibility);
     };
-  }, [task, intervalMs, enabled]);
+  }, [task, intervalMs, enabled, immediate]);
 }

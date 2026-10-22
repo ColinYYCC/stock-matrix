@@ -1039,14 +1039,18 @@ export async function getTreemapData(
   market: MarketKey,
   period: HeatmapPeriodKey = "day"
 ): Promise<TreemapResponse> {
+  const startedAt = Date.now();
   // 先动态发现股票列表（含新股），显式传给行情缓存（不经过全局变量）
   const stocks = await discoverStocks();
+  const discoveryMs = Date.now() - startedAt;
 
+  const upstreamStartedAt = Date.now();
   const [quoteResult, summaryResult, indexResult] = await Promise.allSettled([
     getCachedQuotes(stocks),
     getCachedSummary(),
     getCachedMarketIndex(),
   ]);
+  const upstreamMs = Date.now() - upstreamStartedAt;
 
   const remoteIndexSummary =
     indexResult.status === "fulfilled" ? indexResult.value.summaries[market] : null;
@@ -1060,6 +1064,9 @@ export async function getTreemapData(
       });
       hasLoggedFallbackWarning = true;
     }
+    console.info("[heatmap/treemap] 走兜底快照", {
+      market, period, discoveryMs, upstreamMs, totalMs: Date.now() - startedAt,
+    });
     return buildFallbackTreemap(market, period, remoteIndexChangePct);
   }
 
@@ -1076,6 +1083,11 @@ export async function getTreemapData(
   // 成交额同花顺只提供全市场口径；其余一律用色块股票池现算，保证口径一致
   const useRemoteBreadth = market === "all" && period === "day" && remoteSummary !== null;
   const useRemoteTurnover = market === "all" && remoteSummary !== null;
+
+  console.info("[heatmap/treemap] 实时行情", {
+    market, period, discoveryMs, upstreamMs, totalMs: Date.now() - startedAt,
+    stockCount: marketStocks.length, boardCount: nodes.length,
+  });
 
   return {
     market,

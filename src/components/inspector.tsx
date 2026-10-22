@@ -66,6 +66,9 @@ const StockListItem = memo(function StockListItem({
   return (
     <div
       className={cn(
+        // 屏幕上外的行跳过渲染（content-visibility），行里的分时图因此不会发网络请求。
+        // 没有这行时，悬停一个大板块会一次性把几百张东方财富图片打出去，堵塞连接。
+        "[content-visibility:auto] [contain-intrinsic-size:auto_32px]",
         "grid grid-cols-[minmax(0,1fr)_56px_64px_80px] items-center gap-2 border-b border-slate-300/70 px-3 py-1.5 text-[12px]",
         isActive && "bg-slate-100"
       )}
