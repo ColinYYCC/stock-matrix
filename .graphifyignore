@@ -2,12 +2,15 @@
 # 规则见 .codebuddy/rules/graphify-sync.mdc
 # 只需写排除项 —— .gitignore 会自动合并生效，不要抄它的内容
 
-# ---- 文档与草稿 ----
+# ---- 文档与图片 ----
+# 文档/图片需要「语义提取」（读内容再抽节点），成本高而对代码导航收益低，
+# 本项目不做。直接排除，图谱只保留程序本体，也免去每次同步反复排队。
 docs/
-README.md
-CHANGELOG.md
-release-notes/
-skill-dispatch.md
+*.md
+*.txt
+*.yml
+*.yaml
+*.svg
 
 # ---- 构建产物 ----
 dist/
@@ -23,8 +26,6 @@ sample/
 .vscode/
 .idea/
 
-# ---- AI 助手技能备份（非项目代码）----
+# ---- AI 助手技能备份、排查用临时脚本 ----
 .skill-backup*/
-
-# ---- 排查用临时脚本 ----
 .tmp-*
