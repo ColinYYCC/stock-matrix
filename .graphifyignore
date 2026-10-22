@@ -1,0 +1,30 @@
+# graphify 扫描范围：只收「程序本体」（源码、构建脚本、根配置、依赖清单）
+# 规则见 .codebuddy/rules/graphify-sync.mdc
+# 只需写排除项 —— .gitignore 会自动合并生效，不要抄它的内容
+
+# ---- 文档与草稿 ----
+docs/
+README.md
+CHANGELOG.md
+release-notes/
+skill-dispatch.md
+
+# ---- 构建产物 ----
+dist/
+release/
+build/
+out/
+
+# ---- 示例数据 ----
+sample/
+
+# ---- IDE 与 AI 助手配置、个人笔记 ----
+.codebuddy/
+.vscode/
+.idea/
+
+# ---- AI 助手技能备份（非项目代码）----
+.skill-backup*/
+
+# ---- 排查用临时脚本 ----
+.tmp-*
