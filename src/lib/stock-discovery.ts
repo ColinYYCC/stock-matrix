@@ -534,73 +534,87 @@ export async function discoverStocks(): Promise<StockSnapshot[]> {
     return discoveryCache;
   }
 
+  // 冷启动（服务刚起 / 缓存被清）：先用静态基线出图，全量名单交给后台慢慢拉。
+  // 否则首屏要干等 55 页分页（实测 6~7 秒）才画得出第一张图。
+  // 基线不打时间戳，所以下一次调用会走下面分支、等后台那份全量结果。
+  if (!discoveryCache) {
+    discoveryCache = baselineStocks;
+    discoveryCacheTimestamp = 0;
+    discoveryPromise = runFullDiscovery();
+    return discoveryCache;
+  }
+
   // Promise 去重：避免并发重复请求
   if (discoveryPromise) {
     return discoveryPromise;
   }
 
-  discoveryPromise = (async () => {
-    try {
-      // --- 总数预检：先拉第一页，检查 total 是否变化 ---
-      const firstPayload = (await fetchClistPage(1)) as {
-        data?: { total?: number };
-      };
-      const total = firstPayload.data?.total ?? 0;
-      if (total <= 0) {
-        throw new Error(`clist total is invalid: ${total}`);
-      }
+  discoveryPromise = runFullDiscovery();
+  return discoveryPromise;
+}
 
-      // 总数没变 且 已有缓存 → 跳过全量拉取，延长缓存时间
-      if (lastDiscoveryTotal === total && discoveryCache) {
-        discoveryCacheTimestamp = Date.now();
-        return discoveryCache;
-      }
+/** 全量拉取名单并写缓存；失败时沿用已有缓存（首次失败则退回静态基线） */
+async function runFullDiscovery(): Promise<StockSnapshot[]> {
+  try {
+    // --- 总数预检：先拉第一页，检查 total 是否变化 ---
+    const firstPayload = (await fetchClistPage(1)) as {
+      data?: { total?: number };
+    };
+    const total = firstPayload.data?.total ?? 0;
+    if (total <= 0) {
+      throw new Error(`clist total is invalid: ${total}`);
+    }
 
-      // 总数变了（或首次运行）→ 全量拉取所有分页
-      const pageCount = Math.ceil(total / CLIST_PAGE_SIZE);
-      const payloads: unknown[] = [firstPayload];
+    // 总数没变 且 已有缓存 → 跳过全量拉取，延长缓存时间
+    if (lastDiscoveryTotal === total && discoveryCache) {
+      discoveryCacheTimestamp = Date.now();
+      return discoveryCache;
+    }
 
-      if (pageCount > 1) {
-        const remainingPages = Array.from({ length: pageCount - 1 }, (_, i) => i + 2);
+    // 总数变了（或首次运行）→ 全量拉取所有分页
+    const pageCount = Math.ceil(total / CLIST_PAGE_SIZE);
+    const payloads: unknown[] = [firstPayload];
 
-        // 分批并发，每批 CLIST_CONCURRENCY 个
-        for (let i = 0; i < remainingPages.length; i += CLIST_CONCURRENCY) {
-          const batch = remainingPages.slice(i, i + CLIST_CONCURRENCY);
-          const results = await Promise.allSettled(batch.map((p) => fetchClistPage(p)));
-          for (const result of results) {
-            if (result.status === "fulfilled") {
-              payloads.push(result.value);
-            }
+    if (pageCount > 1) {
+      const remainingPages = Array.from({ length: pageCount - 1 }, (_, i) => i + 2);
+
+      // 分批并发，每批 CLIST_CONCURRENCY 个
+      for (let i = 0; i < remainingPages.length; i += CLIST_CONCURRENCY) {
+        const batch = remainingPages.slice(i, i + CLIST_CONCURRENCY);
+        const results = await Promise.allSettled(batch.map((p) => fetchClistPage(p)));
+        for (const result of results) {
+          if (result.status === "fulfilled") {
+            payloads.push(result.value);
           }
         }
       }
-
-      const discovered = parseClistStocks(payloads);
-
-      // 完整性校验：拉到的数量 >= API 声称的总数的 80%
-      if (discovered.length < total * 0.8) {
-        throw new Error(
-          `Discovered stock count ${discovered.length} is too low (API total: ${total})`
-        );
-      }
-
-      const merged = mergeDiscoveredWithBaseline(discovered, baselineStocks);
-      discoveryCache = merged;
-      discoveryCacheTimestamp = Date.now();
-      lastDiscoveryTotal = total;
-      return merged;
-    } catch (error) {
-      console.warn("Stock discovery failed, falling back to baseline:", error);
-      // 回退到静态基线
-      if (!discoveryCache) {
-        discoveryCache = baselineStocks;
-        discoveryCacheTimestamp = Date.now();
-      }
-      return discoveryCache;
-    } finally {
-      discoveryPromise = null;
     }
-  })();
 
-  return discoveryPromise;
+    const discovered = parseClistStocks(payloads);
+
+    // 完整性校验：拉到的数量 >= API 声称的总数的 80%
+    if (discovered.length < total * 0.8) {
+      throw new Error(
+        `Discovered stock count ${discovered.length} is too low (API total: ${total})`
+      );
+    }
+
+    const merged = mergeDiscoveredWithBaseline(discovered, baselineStocks);
+    discoveryCache = merged;
+    discoveryCacheTimestamp = Date.now();
+    lastDiscoveryTotal = total;
+    return merged;
+  } catch (error) {
+    console.warn("Stock discovery failed, falling back to baseline:", error);
+    // 回退到静态基线
+    if (!discoveryCache) {
+      discoveryCache = baselineStocks;
+    }
+    // 失败也要刷新时间戳：否则（尤其冷启动那次后台拉取失败时）
+    // 缓存时间戳停在 0，之后每个请求都会重试一遍，白白多等 1 秒还连打上游
+    discoveryCacheTimestamp = Date.now();
+    return discoveryCache;
+  } finally {
+    discoveryPromise = null;
+  }
 }

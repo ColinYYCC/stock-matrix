@@ -326,6 +326,8 @@ describe("discoverStocks", () => {
       json: async () => mockPayload,
     }));
 
+    // 冷启动第一次先回静态基线（秒出图），第二次才拿到后台拉到的全量名单
+    await discoverStocks();
     const result = await discoverStocks();
     expect(result.length).toBeGreaterThan(0);
     const newStock = result.find((s) => s.code === "999999.SH");
@@ -382,7 +384,8 @@ describe("discoverStocks", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
 
-    // 第一次调用：全量拉取（单页场景，1 次请求）
+    // 第一次调用：冷启动先回基线，第二次拿到后台全量结果（单页场景，1 次请求）
+    await discoverStocks();
     await discoverStocks();
     const firstCallCount = fetchMock.mock.calls.length;
     expect(firstCallCount).toBe(1);
@@ -415,7 +418,8 @@ describe("discoverStocks", () => {
     }));
     vi.stubGlobal("fetch", fetchMock);
 
-    // 第一次调用
+    // 第一次调用：冷启动先回基线，第二次拿到后台全量结果
+    await discoverStocks();
     await discoverStocks();
     const firstCallCount = fetchMock.mock.calls.length;
 

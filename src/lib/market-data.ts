@@ -361,6 +361,14 @@ function getLiveStockAreaValue(
   return normalizeAreaValue(baseCap);
 }
 
+/**
+ * 涨跌幅只保留 3 位小数。界面只显示 2 位，原始浮点带 16 位小数纯属浪费
+ * （5579 只合计约 90 KB）。NaN 表示"这个周期没有数据"，原样返回。
+ */
+function trimChangePct(value: number): number {
+  return Number.isNaN(value) ? value : Math.round(value * 1000) / 1000;
+}
+
 /** 获取股票的成交额 */
 function getStockTurnover(stock: StockSnapshot): number {
   return Number.isFinite(stock.turnoverAmount) && (stock.turnoverAmount ?? 0) > 0 ? stock.turnoverAmount ?? 0 : 0;
@@ -934,11 +942,11 @@ function groupStocksByBoard(
       name: stock.name,
       boardName: stock.boardName,
       subBoardName: stock.subBoardName,
-      value: getLiveStockAreaValue(stock, quote),
-      exchange: stock.exchange,
+      // value 只用来分配色块面积，取整即可（原浮点带 3 位小数，5579 只合计约 20 KB）
+      value: Math.round(getLiveStockAreaValue(stock, quote)),
       price: quote?.price ?? stock.price,
-      changePct: extractPeriodChange(quote?.changes, period, stock.changePct),
-      turnoverAmount: quote?.turnoverAmount ?? getStockTurnover(stock),
+      changePct: trimChangePct(extractPeriodChange(quote?.changes, period, stock.changePct)),
+      turnoverAmount: Math.round(quote?.turnoverAmount ?? getStockTurnover(stock)),
     });
 
     boardMap.set(stock.boardName, current);

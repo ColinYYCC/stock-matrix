@@ -153,7 +153,6 @@ export type HeatmapStockNode = {
   boardName: string;
   subBoardName: string;
   value: number;
-  exchange: ExchangeCode;
   price: number;
   changePct: number;
   turnoverAmount: number;

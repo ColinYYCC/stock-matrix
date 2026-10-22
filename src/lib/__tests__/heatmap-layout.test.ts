@@ -18,7 +18,6 @@ function makeStock(code: string, value: number): HeatmapStockNode {
     boardName: "测试板块",
     subBoardName: "测试子板块",
     value,
-    exchange: "SH",
     price: 10,
     changePct: 1.2,
     turnoverAmount: 1_000_000,
