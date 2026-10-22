@@ -150,9 +150,16 @@ const summaryRequestHeaders = {
   Accept: "application/json, text/plain, */*",
 };
 
-/** 模块缓存 TTL：8 秒 */
-const quoteCacheMs = 8_000;
-const summaryCacheMs = 8_000;
+/**
+ * 模块缓存 TTL：2 秒。
+ * 原来也是 8 秒，但会和 CDN 那层（s-maxage=8）叠成最多 16 秒的陈旧：
+ * CDN 在缓存快过期时回源，服务端正好把几秒前的数据又递给它，CDN 再缓存 8 秒。
+ * 挡上游这件事 CDN 那一层已经做了（跨用户共享），服务端这层挡不到多少额外请求，
+ * 却白送 8 秒陈旧。留 2 秒只为同一个瞬间涌入的多个请求共用一次回源
+ * （真正的并发去重由 createMarketCache 里的 pending Promise 保证）。
+ */
+const quoteCacheMs = 2_000;
+const summaryCacheMs = 2_000;
 /** 新浪每批最多 220 只 */
 const sinaBatchSize = 220;
 /** 东方财富每批最多 300 只（改进：原项目 180） */
