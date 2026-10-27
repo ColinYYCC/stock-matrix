@@ -11,10 +11,10 @@ import {
   type TreemapResponse,
 } from "@/types/heatmap";
 
-/** 交易时段轮询间隔：8 秒 */
-export const tradingRefreshIntervalMs = 8000;
-/** 非交易时段轮询间隔：60 秒（行情不会变化，低频刷新即可，主要避免 fallback 数据长期停留） */
-export const idleRefreshIntervalMs = 60_000;
+/** 交易时段轮询间隔：60 秒 */
+export const tradingRefreshIntervalMs = 60_000;
+/** 非交易时段轮询间隔：5 分钟（行情不会变化，低频刷新即可，主要避免 fallback 数据长期停留） */
+export const idleRefreshIntervalMs = 300_000;
 
 /** 热力图数据收发钩子返回的数据与状态 */
 type HeatmapData = {
@@ -31,7 +31,7 @@ type HeatmapData = {
  *
  * 规矩清单：
  * - 首次加载 / 切换市场或周期：重试 2 次（指数退避），仍失败才报错
- * - 交易时段 8 秒 / 非交易时段 60 秒轮询（页面不可见时暂停，切回先刷一次）
+ * - 交易时段 60 秒 / 非交易时段 5 分钟轮询（页面不可见时暂停，切回先刷一次）
  * - 新旧仲裁：旧 updatedAt 不覆盖新数据（防止 CDN 返回的 fallback 覆盖实时数据）
  * - URL 门闩：urlReady 之前不发任何请求（避免分享链接冷启动用默认参数白拉）
  * - 503 = fallback 数据，可接受；502+ 才算失败

@@ -64,8 +64,8 @@
 
 | 层级 | 机制 | 可靠性 | 说明 |
 |------|------|--------|------|
-| CDN 缓存 (主力) | `Cache-Control: s-maxage=8, stale-while-revalidate=30` | ✅ 可靠 | Vercel CDN 边缘节点缓存，90%+ 请求命中后直接返回 |
-| 模块级缓存 (辅助) | `quoteCache` + 8s TTL + Promise 去重 | ⚠️ 仅热实例 | Serverless 实例热时避免重复拉取，冷启动时丢失 |
+| CDN 缓存 (主力) | `Cache-Control: s-maxage=60, stale-while-revalidate=30` | ✅ 可靠 | Vercel CDN 边缘节点缓存，90%+ 请求命中后直接返回 |
+| 模块级缓存 (辅助) | `quoteCache` + 2s TTL + Promise 去重 | ⚠️ 仅热实例 | Serverless 实例热时避免重复拉取，冷启动时丢失 |
 | 数据源 (底层) | 东方财富 → 新浪 → 内置 JSON | ✅ 三级容灾 | 任何一层失败自动降级 |
 
 ### 批量请求
@@ -96,7 +96,7 @@
 │                │  悬浮详情面板 + 底部图例    │ │
 │                └───────────────────────────┘ │
 └──────────────────────────────────────────────┘
-            │ fetch (8s 轮询，页面可见时)
+            │ fetch (60s 轮询，对齐整分钟，页面可见时)
             ▼
 ┌──────────────────────────────────────────────┐
 │            Next.js API Routes                │
@@ -104,7 +104,7 @@
 │  /api/heatmap/quotes    → 实时行情快照        │
 │  /api/heatmap/overview  → 市场指数概览        │
 └──────────────────────────────────────────────┘
-            │ fetch (8s 服务端缓存)
+            │ fetch (2s 服务端缓存)
             ▼
 ┌──────────────────────────────────────────────┐
 │            服务端数据层                       │
@@ -298,7 +298,7 @@ function getHeatColor(changePct: number, colorMode: "red-rise" | "green-rise"): 
 | 17 | 双击跳转雪球 | toXueqiuSymbol | 0.2 |
 | 18 | 亮色主题 | 深色/浅色切换 + localStorage | 0.5 |
 | 19 | 全屏模式 | 全屏 + Esc 退出 | 0.3 |
-| 20 | 8 秒自动轮询 | use-poll-while-visible.ts | 0.3 |
+| 20 | 60 秒自动轮询（对齐整分钟） | use-poll-while-visible.ts | 0.3 |
 | 21 | 移动端适配 | 触摸交互 + mobile-stock-sheet.tsx | 1 |
 
 ### 第三阶段：增强功能（第 11-13 天，可选）
@@ -355,7 +355,7 @@ function getHeatColor(changePct: number, colorMode: "red-rise" | "green-rise"): 
   - [ ] 每批 fetch 加 AbortSignal.timeout(5000) 超时保护
   - [ ] 同花顺涨跌家数 + 成交额获取
   - [ ] 三级容灾逻辑 (东方财富 → 新浪 → JSON)
-  - [ ] 模块级缓存 + Promise 去重 (8s)
+  - [ ] 模块级缓存 + Promise 去重 (2s)
   - [ ] buildNodesFromStocks (按板块分组)
   - [ ] summarizeStocks (涨/平/跌统计)
   - [ ] filterStocks (市场范围筛选，HS300/A500 从预置 JSON 读取真实成分股)
@@ -471,7 +471,7 @@ function getHeatColor(changePct: number, colorMode: "red-rise" | "green-rise"): 
 - [ ] P2-8 自动轮询
   - [ ] use-poll-while-visible.ts (visibilitychange + setInterval)
   - [ ] 页面不可见时暂停
-  - [ ] 8s 间隔刷新 quotes + overview
+  - [ ] 60s 间隔刷新 quotes + overview（刷新时刻对齐整分钟）
 - [ ] P2-9 移动端适配
   - [ ] use-is-mobile.ts (matchMedia)
   - [ ] 触摸事件 (单指拖拽 + 双指缩放 + 双击)
@@ -533,5 +533,5 @@ function getHeatColor(changePct: number, colorMode: "red-rise" | "green-rise"): 
 - [ ] 双击个股跳转雪球
 - [ ] 深色/浅色主题切换 + 持久化
 - [ ] 全屏模式
-- [ ] 8 秒自动轮询刷新
+- [ ] 60 秒自动轮询刷新（对齐整分钟）
 - [ ] 移动端可正常使用 (触摸缩放/拖拽/底部面板)

@@ -296,7 +296,7 @@ export function MarketHeatmap({ locale }: { locale: Locale }) {
   }, []);
 
   // ============ 数据收发 ============
-  // 交易时段 8 秒刷新，非交易时段 60 秒低频刷新；非交易时段仍保持轮询，
+  // 交易时段 60 秒刷新，非交易时段 5 分钟低频刷新；非交易时段仍保持轮询，
   // 确保 fallback 数据被及时替换为实时数据。
   // 收发规矩（重试/门闩/新旧仲裁/轮询）集中在 useHeatmapData，组件只消费数据
   const isTrading = useTradingHours();
@@ -456,7 +456,7 @@ export function MarketHeatmap({ locale }: { locale: Locale }) {
   // 侧边栏概览直接用 treemap 接口返回的 summary（审计 A1：数据同源，无需前端重算）
 
   // ============ 树图布局：位置计算（依赖 treemap 数据和画布尺寸） ============
-  // treemapData 每 8s 轮询刷新，服务端会用实时价格重算流通市值（value），
+  // treemapData 每 60s 轮询刷新，服务端会用实时价格重算流通市值（value），
   // 所以行情刷新时色块大小会跟着变化。布局只在 visibleTreemapData、画布尺寸
   // 或"隐藏无字色块"开关变化时重算，不依赖前端 quotes。
   const layoutPositions = useMemo(() => {

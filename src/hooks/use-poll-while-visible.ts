@@ -6,8 +6,9 @@ import { useEffect } from "react";
  * 页面可见时定时轮询，页面不可见时自动暂停。
  *
  * @param task 每次要执行的任务函数
- * @param intervalMs 轮询间隔（毫秒）。可动态变化（如交易时段 8s、非交易时段 60s），
- *                   变化时自动重启定时器。
+ * @param intervalMs 轮询间隔（毫秒）。可动态变化（如交易时段 60s、非交易时段 60s），
+ *                   变化时自动重启定时器。刷新时刻对齐到系统时钟的整数刻度
+ *                   （60 秒就是 10:01:00、10:02:00…），不是从打开页面起随便数 60 秒。
  * @param enabled 是否启用定时轮询（默认 true）。设为 false 时不启动定时器。
  *                注意：无论 enabled 是否为 true，用户切回页面时都会立即执行一次 task，
  *                确保返回页面时数据是最新的。
@@ -35,14 +36,24 @@ export function usePollWhileVisible(
       });
     };
 
+    // 每次都按系统时钟重算「离下一个整周期还有多久」，而不是用固定 setInterval：
+    // 60 秒就每次都落在 10:01:00、10:02:00…，页面开一整天也不会累积漂移。
+    // 中国时区是整小时偏移，对齐 UTC 整分钟就等同于对齐本地整分钟。
     const start = () => {
       if (timer !== null || !enabled) return;
-      timer = window.setInterval(run, intervalMs);
+      const elapsedInCycle = Date.now() % intervalMs;
+      // 正好踩在整点上就等满一整轮，免得和「切回页面先刷一次」撞成两次请求
+      const delayToBoundary = elapsedInCycle === 0 ? intervalMs : intervalMs - elapsedInCycle;
+      timer = window.setTimeout(() => {
+        timer = null;
+        run();
+        start();
+      }, delayToBoundary);
     };
 
     const stop = () => {
       if (timer !== null) {
-        window.clearInterval(timer);
+        window.clearTimeout(timer);
         timer = null;
       }
     };
