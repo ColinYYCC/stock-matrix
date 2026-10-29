@@ -133,8 +133,9 @@ export type MarketOverview = {
   flatCount: number;
   declineCount: number;
   turnoverAmount: number;
-  turnoverPreviousAmount: number;
-  turnoverDelta: number;
+  /** 非全市场范围没有对比口径：服务端的 NaN 经 JSON 序列化变成 null，消费方按"无对比"处理 */
+  turnoverPreviousAmount: number | null;
+  turnoverDelta: number | null;
 };
 
 /** 单个市场的摘要信息 */
@@ -179,8 +180,9 @@ export type TreemapResponse = {
     flatCount: number;
     declineCount: number;
     turnoverAmount: number;
-    turnoverPreviousAmount: number;
-    turnoverDelta: number;
+    /** 非全市场范围没有对比口径：服务端的 NaN 经 JSON 序列化变成 null，消费方按"无对比"处理 */
+    turnoverPreviousAmount: number | null;
+    turnoverDelta: number | null;
     indexChangePct?: number;
   };
   nodes: HeatmapBoardNode[];

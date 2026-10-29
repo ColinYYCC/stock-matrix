@@ -21,9 +21,9 @@ import { MobileStockSheet } from "@/components/mobile-stock-sheet";
 import { ColorLegend } from "@/components/color-legend";
 import { cn } from "@/lib/utils";
 import { clamp } from "@/lib/format";
-import { flatThreshold, summarizeStocks, weightedAverageChange } from "@/lib/market-stats";
+import { flatThreshold, summarizeStocks } from "@/lib/market-stats";
 import { drawHeatmap, drawHeatmapHighlight, heatmapCanvasThemes } from "@/lib/canvas-render";
-import { computeHeatmapLayout, computeLayoutHidingUnreadable } from "@/lib/heatmap-layout";
+import { boardWeightedChange, computeHeatmapLayout, computeLayoutHidingUnreadable } from "@/lib/heatmap-layout";
 import { getMessages } from "@/lib/i18n";
 import { useHeatmapData, tradingRefreshIntervalMs, idleRefreshIntervalMs } from "@/hooks/use-heatmap-data";
 import { useTradingHours } from "@/hooks/use-trading-hours";
@@ -64,11 +64,6 @@ import { useDesignStyle } from "@/hooks/use-design-style";
 function toXueqiuSymbol(code: string) {
   const [symbol, market] = code.split(".");
   return `${market}${symbol}`;
-}
-
-/** 板块级加权涨跌幅：无有效数据（周/月/年视图部分板块无涨跌幅数据）时按 0% 显示 */
-function boardWeightedChange(stocks: ReadonlyArray<{ value: number; changePct: number }>) {
-  return weightedAverageChange(stocks) || 0;
 }
 
 // ============ 加载状态遮罩 ============
@@ -375,7 +370,7 @@ export function MarketHeatmap({ locale }: { locale: Locale }) {
           stockCount: selectedBoard.stockCount,
           boardCount: 1,
           // 注意：turnoverPreviousAmount 和 turnoverDelta 保留原始值，
-          // 非全市场范围下为 NaN，前端会显示"无对比"而非误显示"持平"
+          // 非全市场范围下为 null（服务端 NaN 经 JSON 序列化所致），前端显示"无对比"而非误显示"持平"
           summary: { ...result.summary, ...summarizeStocks(selectedBoard.children), indexChangePct: boardWeightedChange(selectedBoard.children) },
           nodes: [selectedBoard],
         };
@@ -507,7 +502,7 @@ export function MarketHeatmap({ locale }: { locale: Locale }) {
     // treemap 节点自带服务端实时价格/涨跌幅，无需再合并 quotes
     return children
       .map((stock) => {
-        return { code: stock.code, name: stock.name, subBoardName: stock.subBoardName, price: stock.price, changePct: stock.changePct };
+        return { code: stock.code, name: stock.name, price: stock.price, changePct: stock.changePct };
       })
       .sort((left, right) => Math.abs(right.changePct) - Math.abs(left.changePct));
   }, [activeBoardName, visibleTreemapData]);
@@ -516,7 +511,7 @@ export function MarketHeatmap({ locale }: { locale: Locale }) {
     if (activeBoardStocks.length === 0) return [];
     if (!highlightedStock) return activeBoardStocks.map((stock) => ({ ...stock, active: false }));
     const current = activeBoardStocks.find((stock) => stock.code === highlightedStock.code) ?? {
-      code: highlightedStock.code, name: highlightedStock.name, subBoardName: highlightedStock.subBoardName, price: highlightedStock.price, changePct: highlightedStock.changePct,
+      code: highlightedStock.code, name: highlightedStock.name, price: highlightedStock.price, changePct: highlightedStock.changePct,
     };
     const rest = activeBoardStocks.filter((stock) => stock.code !== highlightedStock.code);
     return [{ ...current, active: true }, ...rest.map((stock) => ({ ...stock, active: false }))];

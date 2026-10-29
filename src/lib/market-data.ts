@@ -13,7 +13,7 @@
 import fallbackMarketSnapshot from "@/lib/data/stocks-fallback.json";
 import indexConstituents from "@/lib/data/index-constituents.json";
 import { summarizeStocks, weightedAverageChange } from "@/lib/market-stats";
-import { CST_OFFSET_MS } from "@/lib/trading-hours";
+import { CST_OFFSET_MS, shouldSealSnapshot } from "@/lib/trading-hours";
 import {
   discoverStocks,
   baselineStocks,
@@ -28,14 +28,8 @@ import {
   type MarketOverviewItem,
   type MarketOverviewResponse,
   type TreemapResponse,
-  isHeatmapPeriodKey,
-  isMarketKey,
   marketKeys,
-  heatmapPeriodKeys,
 } from "@/types/heatmap";
-
-// 复用 types 中的类型守卫
-export { isMarketKey, isHeatmapPeriodKey, marketKeys, heatmapPeriodKeys };
 
 // ============ 内部类型 ============
 
@@ -210,7 +204,7 @@ let hasLoggedFallbackWarning = false;
 /** 各缓存工厂注册的清理函数，跨日解锁时统一调用 */
 const marketCacheClearers: Array<() => void> = [];
 
-/** 收盘数据锁定标记：一旦检测到已收盘且获取到有效数据，就锁定不再刷新 */
+/** 收盘数据锁定标记：已收盘且缓存快照本身来自收盘之后（shouldSealSnapshot 判定），就锁定不再刷新 */
 let isMarketClosedAndLocked = false;
 let lockDateString = ""; // 记录锁定时的日期，用于次日自动解锁
 
@@ -219,19 +213,6 @@ function applyMarketCloseLock(): void {
   isMarketClosedAndLocked = true;
   const cst = new Date(Date.now() + CST_OFFSET_MS);
   lockDateString = `${cst.getUTCFullYear()}-${cst.getUTCMonth() + 1}-${cst.getUTCDate()}`;
-}
-
-/** 判断当前是否已收盘（15:00 之后）且应该锁定数据 */
-function shouldLockAfterMarketClose(): boolean {
-  const now = new Date();
-  const cst = new Date(now.getTime() + CST_OFFSET_MS);
-  const dayOfWeek = cst.getUTCDay();
-  // 周六=6, 周日=0，周末也锁定
-  if (dayOfWeek === 0 || dayOfWeek === 6) return true;
-
-  const timeMinutes = cst.getUTCHours() * 60 + cst.getUTCMinutes();
-  // 下午收盘 15:00 = 900 分钟（15*60），之后锁定数据
-  return timeMinutes >= 900;
 }
 
 /** 检查是否需要解锁（次日开盘前自动解锁） */
@@ -323,10 +304,9 @@ function formatShanghaiTime(value: string | undefined): string {
   if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(trimmed)) {
     return `${trimmed.replace(" ", "T")}+08:00`;
   }
-  const parsed = new Date(trimmed);
-  if (Number.isNaN(parsed.getTime())) return new Date(Date.now() + CST_OFFSET_MS).toISOString().replace("Z", "+08:00");
-  // parsed.toISOString() 返回 UTC 时间（前端会用 timeZone: 'Asia/Shanghai' 显示，所以没问题）
-  return parsed.toISOString();
+  // 非标准格式不做时区猜测：new Date() 按服务器本地时区解析，UTC 环境会把北京时间
+  // 错读 8 小时；直接退回"当前时间+08:00"（2026-10-29 实测接口始终返回标准格式，此分支纯防御）
+  return new Date(Date.now() + CST_OFFSET_MS).toISOString().replace("Z", "+08:00");
 }
 
 /** 解析新浪的日期+时间（北京时间），返回北京时间 ISO 格式 */
@@ -886,8 +866,10 @@ function createMarketCache<T extends { timestamp: number }, Args extends unknown
       return cache;
     }
 
-    // 检查是否刚进入收盘状态，需要锁定
-    if (shouldLockAfterMarketClose() && cache && !isMarketClosedAndLocked) {
+    // 刚进入收盘状态：只有缓存快照本身来自收盘之后才允许锁定。
+    // 没有这道防线，15:00 后的第一个请求会把 14:57 集合竞价前的旧快照直接锁死，
+    // 收盘价（15:00 才撮合）直到次日开盘都进不来（2026-10-29 线上核验确认）。
+    if (cache && !isMarketClosedAndLocked && shouldSealSnapshot(cache.timestamp)) {
       applyMarketCloseLock();
       return cache;
     }
@@ -903,7 +885,8 @@ function createMarketCache<T extends { timestamp: number }, Args extends unknown
     pending = fetcher(...args)
       .then((snapshot) => {
         cache = snapshot;
-        if (shouldLockAfterMarketClose() && !isMarketClosedAndLocked) {
+        // 快照时间戳就是本次取数时刻；收盘后（封存线之后）取到的快照自然含收盘价，可封存
+        if (shouldSealSnapshot(snapshot.timestamp) && !isMarketClosedAndLocked) {
           applyMarketCloseLock();
         }
         return snapshot;

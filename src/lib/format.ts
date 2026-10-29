@@ -80,9 +80,9 @@ export function formatTurnoverAmount(value: number, locale: Locale) {
   }).format(value);
 }
 
-/** 判断成交额变化趋势：放量 / 缩量 / 持平 / 未知（无对比数据） */
-export function getTurnoverTrend(delta: number) {
-  if (!Number.isFinite(delta)) {
+/** 判断成交额变化趋势：放量 / 缩量 / 持平 / 未知（无对比数据；delta 实际可能为 null，见 types/heatmap.ts） */
+export function getTurnoverTrend(delta: number | null) {
+  if (delta === null || !Number.isFinite(delta)) {
     return "unknown" as const;
   }
   if (delta > 0) {

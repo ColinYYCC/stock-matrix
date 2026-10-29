@@ -183,7 +183,7 @@ function strokeRoundRect(
   context.stroke();
 }
 
-/** 热力图字体栈（#7: 跨平台覆盖 macOS / Windows / Linux / Android） */
+/** 热力图字体栈（#7: 多平台逐级回退，缺字体时依次向后兜底） */
 const heatmapFontStack = `"Avenir Next Condensed", "DIN Condensed", "Helvetica Neue Condensed", "PingFang SC", "Microsoft YaHei", "Noto Sans SC", "Source Han Sans SC", Arial, sans-serif`;
 
 /** 生成 Canvas 字体声明 */

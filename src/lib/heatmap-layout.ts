@@ -18,8 +18,9 @@ export type HeatmapLayout = {
   subBoardRects: SubBoardRect[];
 };
 
-/** 板块级加权涨跌幅：无有效数据（周/月/年视图部分板块无涨跌幅数据）时按 0% 显示 */
-function boardWeightedChange(stocks: ReadonlyArray<{ value: number; changePct: number }>) {
+/** 板块级加权涨跌幅：无有效数据（周/月/年视图部分板块无涨跌幅数据）时按 0% 显示。
+ * 导出给 market-heatmap 共用（审计第 4 条：此前两侧各有一份逐字相同的副本）。 */
+export function boardWeightedChange(stocks: ReadonlyArray<{ value: number; changePct: number }>) {
   return weightedAverageChange(stocks) || 0;
 }
 

@@ -55,7 +55,7 @@ export const messages = {
       expandSidebar: "展开菜单",
       collapseSidebar: "收起菜单",
       settingsTitle: "设置",
-      settingsDescription: "自定义显示效果、语言和交互方式。",
+      settingsDescription: "自定义显示效果和交互方式。",
       settingsAppearance: "外观",
       settingsHelp: "帮助",
       settingsProject: "项目",

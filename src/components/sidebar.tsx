@@ -436,7 +436,7 @@ export const Sidebar = memo(function Sidebar({
                         >
                           {turnoverTrend === "unknown"
                             ? messages.turnoverNoComparisonLabel
-                            : formatTurnoverAmount(Math.abs(marketOverview.turnoverDelta), locale)}
+                            : formatTurnoverAmount(Math.abs(marketOverview.turnoverDelta ?? 0), locale)}
                         </p>
                       </>
                     );

@@ -1,5 +1,5 @@
 /**
- * A 股交易时间判断
+ * A 股交易时间判断，及收盘后快照封存的时间判定
  *
  * 交易时段（北京时间 CST = UTC+8）：
  *   上午 09:30 - 11:30
@@ -52,4 +52,42 @@ export function isTradingHours(now: Date = new Date()): boolean {
   if (timeMinutes >= AFTERNOON_START && timeMinutes < AFTERNOON_END) return true;
 
   return false;
+}
+
+// ============ 收盘封存时间判定 ============
+
+/**
+ * 封存线：最近一个交易日的 15:01（收盘后再留 1 分钟），对应 UTC 时间戳。
+ * 收盘价 15:00 才撮合，留 1 分钟给上游推送，确保封存的快照确实包含收盘价。
+ * 周末回退到上周五（周日回退 2 天、周六 1 天）。
+ */
+function latestSealableTimestamp(now: Date = new Date()): number {
+  const cst = new Date(now.getTime() + CST_OFFSET_MS);
+  const dayOfWeek = cst.getUTCDay();
+  const daysBack = dayOfWeek === 0 ? 2 : dayOfWeek === 6 ? 1 : 0;
+  const closeDay = new Date(cst.getTime() - daysBack * 86_400_000);
+  // 北京时间 15:01 = 同一历日的 UTC 07:01
+  return Date.UTC(closeDay.getUTCFullYear(), closeDay.getUTCMonth(), closeDay.getUTCDate(), 7, 1, 0);
+}
+
+/**
+ * 收盘后能否把缓存快照封存（不再刷新，直到次日跨日解锁）。
+ *
+ * 必须同时满足两个条件：
+ * 1. 现在已过收盘（交易日 15:00 之后，或周末）；
+ * 2. 快照时间戳本身晚于封存线——即快照已包含收盘价。
+ *
+ * 条件 2 是 2026-10-29 修复的核心：A 股 14:57-15:00 为收盘集合竞价，
+ * 收盘价 15:00 才撮合；没有这道防线，15:00 后的第一个请求会把竞价前的
+ * 旧快照永久锁死，收盘后到次日开盘前整张热力图都停在缺收盘价的旧数据上。
+ * 法定节假日未维护日历表，沿用 isTradingHours 的已知限制。
+ */
+export function shouldSealSnapshot(cacheTimestamp: number, now: Date = new Date()): boolean {
+  const cst = new Date(now.getTime() + CST_OFFSET_MS);
+  const dayOfWeek = cst.getUTCDay();
+  const pastClose =
+    dayOfWeek === 0 ||
+    dayOfWeek === 6 ||
+    cst.getUTCHours() * 60 + cst.getUTCMinutes() >= AFTERNOON_END;
+  return pastClose && cacheTimestamp >= latestSealableTimestamp(now);
 }

@@ -39,8 +39,10 @@ export const viewport: Viewport = {
 
 /**
  * 主题初始化脚本
- * 在页面渲染前从 localStorage 读取用户的显示偏好（暗色/亮色），
- * 避免页面加载时闪烁。
+ * 在页面渲染前从 localStorage 读取用户的显示偏好（暗色/亮色、界面风格），
+ * 避免页面加载时闪烁。界面风格（data-design 属性）必须在这里恢复：
+ * 服务端渲染的 HTML 上没有该属性（2026-10-29 线上核验），不提前设置的话
+ * ios26 皮肤靠它点亮的背景样式要等水合后才生效，首帧缺一块背景。
  */
 const themeInitScript = `
   try {
@@ -48,9 +50,12 @@ const themeInitScript = `
     const isDark = displayMode !== "light";
     document.documentElement.classList.toggle("dark", isDark);
     document.documentElement.style.colorScheme = isDark ? "dark" : "light";
+    const designStyle = window.localStorage.getItem("stock-matrix-design-style");
+    document.documentElement.setAttribute("data-design", designStyle === "classic" ? "classic" : "ios26");
   } catch {
     document.documentElement.classList.add("dark");
     document.documentElement.style.colorScheme = "dark";
+    document.documentElement.setAttribute("data-design", "ios26");
   }
 `;
 

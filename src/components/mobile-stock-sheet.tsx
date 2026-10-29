@@ -15,7 +15,6 @@ import { skins } from "@/components/skin";
 type MobileStockSheetStock = {
   code: string;
   name: string;
-  subBoardName: string;
   price: number;
   changePct: number;
   active?: boolean;
