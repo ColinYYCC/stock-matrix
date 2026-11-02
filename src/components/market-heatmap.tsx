@@ -1111,11 +1111,14 @@ export function MarketHeatmap({ locale }: { locale: Locale }) {
     canvas.addEventListener("touchmove", onTouchMove, { passive: false });
     canvas.addEventListener("touchend", onTouchEnd, { passive: true });
     canvas.addEventListener("touchcancel", onTouchCancel, { passive: true });
+    // 触摸状态对象挂载后不再更换（ref.current 始终是同一对象），捕获一份给清理函数，
+    // 满足 react-hooks/exhaustive-deps 对 cleanup 读 ref 的静态检查
+    const touchState = touchStateRef.current;
     return () => {
       // 组件卸载或依赖变化时，清理可能挂起的单击定时器
-      if (touchStateRef.current.singleTapTimer !== null) {
-        clearTimeout(touchStateRef.current.singleTapTimer);
-        touchStateRef.current.singleTapTimer = null;
+      if (touchState.singleTapTimer !== null) {
+        clearTimeout(touchState.singleTapTimer);
+        touchState.singleTapTimer = null;
       }
       canvas.removeEventListener("touchstart", onTouchStart);
       canvas.removeEventListener("touchmove", onTouchMove);
