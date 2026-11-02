@@ -22,7 +22,7 @@ import { ColorLegend } from "@/components/color-legend";
 import { cn } from "@/lib/utils";
 import { clamp } from "@/lib/format";
 import { flatThreshold, summarizeStocks } from "@/lib/market-stats";
-import { drawHeatmap, drawHeatmapHighlight, heatmapCanvasThemes } from "@/lib/canvas-render";
+import { heatmapCanvasThemes } from "@/lib/canvas-render";
 import { boardWeightedChange, computeHeatmapLayout, computeLayoutHidingUnreadable } from "@/lib/heatmap-layout";
 import { getMessages } from "@/lib/i18n";
 import { useHeatmapData, tradingRefreshIntervalMs, idleRefreshIntervalMs } from "@/hooks/use-heatmap-data";
@@ -34,9 +34,10 @@ import {
   MIN_ZOOM,
   MAX_ZOOM,
 } from "@/hooks/use-canvas-interaction";
+import { useCanvasRenderer } from "@/hooks/use-canvas-renderer";
+import { useTouchGestures } from "@/hooks/use-touch-gestures";
+import { useUrlState } from "@/hooks/use-url-state";
 import {
-  isHeatmapPeriodKey,
-  isMarketKey,
   allBoardsValue,
   allTrendsValue,
   fallingOnlyValue,
@@ -218,42 +219,19 @@ export function MarketHeatmap({ locale }: { locale: Locale }) {
 
   // ============ URL 状态同步（P1-9：分享链接 / 刷新后保持视图） ============
   // 视图状态（市场/周期/板块/子板块/涨跌筛选）进 URL；显示模式等设备偏好仍走 localStorage。
-  const [urlReady, setUrlReady] = useState(false);
-
-  // 挂载后先从 URL 恢复视图状态；非法值直接忽略（板块值后续由失效保护 effect 校验）
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const urlMarket = params.get("market");
-    const urlPeriod = params.get("period");
-    const urlBoard = params.get("board");
-    const urlSubBoard = params.get("subBoard");
-    const urlTrend = params.get("trend");
-
-    if (typeof urlMarket === "string" && isMarketKey(urlMarket)) setMarket(urlMarket);
-    if (typeof urlPeriod === "string" && isHeatmapPeriodKey(urlPeriod)) setPeriod(urlPeriod);
-    if (urlBoard) setBoardFilter(urlBoard);
-    // 子板块筛选独立于板块筛选：主板（全部板块）下也能直接筛选子板块，
-    // 因此 URL 可能只有 subBoard 没有 board
-    if (urlSubBoard) setSubBoardFilter(urlSubBoard);
-    if (urlTrend === risingOnlyValue || urlTrend === fallingOnlyValue) setTrendFilter(urlTrend);
-
-    setUrlReady(true);
-  }, []);
-
-  // 视图状态变化时写回 URL；默认值不写入，保持 URL 干净。
-  // 用 replaceState：不产生历史记录、不触发 Next 导航。urlReady 门闩防止挂载时用
-  // 还原前的默认值把 URL 里的参数清掉。
-  useEffect(() => {
-    if (!urlReady) return;
-    const params = new URLSearchParams();
-    if (market !== "all") params.set("market", market);
-    if (period !== "day") params.set("period", period);
-    if (boardFilter !== allBoardsValue) params.set("board", boardFilter);
-    if (subBoardFilter) params.set("subBoard", subBoardFilter);
-    if (trendFilter !== allTrendsValue) params.set("trend", trendFilter);
-    const query = params.toString();
-    window.history.replaceState(null, "", query ? `?${query}` : window.location.pathname);
-  }, [urlReady, market, period, boardFilter, subBoardFilter, trendFilter]);
+  // 恢复与写回的规矩整体在 use-url-state 里；urlReady 作门闩：恢复完成前不发数据请求
+  const urlReady = useUrlState({
+    market,
+    period,
+    boardFilter,
+    subBoardFilter,
+    trendFilter,
+    setMarket,
+    setPeriod,
+    setBoardFilter,
+    setSubBoardFilter,
+    setTrendFilter,
+  });
 
   // ============ 尺寸监听 ============
   const refreshSize = useCallback(() => {
@@ -688,139 +666,20 @@ export function MarketHeatmap({ locale }: { locale: Locale }) {
   }, [inspectorStocks.length, inspectorStyle]);
 
   // ============ Canvas 绘制（离屏缓存 + view 变换复用 + requestAnimationFrame） ============
-  // 性能优化：
-  // 1. 完整热力图（不含高亮）画到离屏 canvas，只在数据/布局/配色/字号/画布尺寸变化时全量重画
-  // 2. 鼠标悬停只变化高亮时：逐像素复制离屏底图 + 画描边，不重画数百个色块
-  // 3. 滚轮缩放/拖拽平移期间：底图按新旧 view 的比例与偏移整体变换绘制（挪图不重画），
-  //    操作停止 150ms 后再全量重画一次，消除连续缩放期间的插值模糊
-  const drawFrameRef = useRef<number | null>(null);
-  const offscreenRef = useRef<HTMLCanvasElement | null>(null);
-  /** 离屏底图的依赖快照：任一引用变化才全量重画底图（view 变化单独走变换复用路径） */
-  const baseDepsRef = useRef<readonly unknown[]>([]);
-  /** 离屏底图绘制时使用的 view：变换绘制时用它推算底图该挪到哪里 */
-  const baseViewRef = useRef<ViewState>({ scale: 1, x: 0, y: 0 });
-  /** 缩放/平移停止后的"清晰重画"定时器 */
-  const sharpenTimerRef = useRef<number | null>(null);
-  /** renderCanvas 的最新引用：防抖回调经它调到最新闭包，避免回调与绘制的依赖循环 */
-  const renderCanvasRef = useRef<() => void>(() => {});
-
-  const renderCanvas = useCallback(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const context = canvas.getContext("2d");
-    if (!context) return;
-
-    const pixelRatio = Math.max(1, Math.min(window.devicePixelRatio || 1, 2));
-    const targetWidth = Math.floor(canvasSize.width * pixelRatio);
-    const targetHeight = Math.floor(canvasSize.height * pixelRatio);
-
-    // 底图依赖快照：布局数组/主题对象都是稳定引用（useMemo/常量表），浅比较即可判定
-    const baseDeps = [
-      canvasSize.width, canvasSize.height, heatmapCanvasTheme, priceColorMode, labelSizeMode, showPrice,
-      layoutPositions.stockRects, layoutPositions.boardRects, layoutPositions.subBoardRects,
-    ] as const;
-    const needFullRedraw =
-      baseDeps.length !== baseDepsRef.current.length ||
-      baseDeps.some((dependency, index) => dependency !== baseDepsRef.current[index]);
-
-    // 离屏 canvas：底图依赖变化时按当前 view 全量重绘（不含高亮）
-    const offscreen = offscreenRef.current ?? (offscreenRef.current = document.createElement("canvas"));
-    if (needFullRedraw) {
-      baseDepsRef.current = baseDeps;
-      baseViewRef.current = view;
-      offscreen.width = targetWidth;
-      offscreen.height = targetHeight;
-      const offContext = offscreen.getContext("2d");
-      if (!offContext) return;
-      drawHeatmap({
-        context: offContext, canvasWidth: canvasSize.width, canvasHeight: canvasSize.height, pixelRatio, view,
-        theme: heatmapCanvasTheme, priceColorMode,
-        labelOptions: { sizeMode: labelSizeMode, showPrice },
-        stockRects: layoutPositions.stockRects, boardRects: layoutPositions.boardRects, subBoardRects: layoutPositions.subBoardRects,
-      });
-    }
-
-    if (canvas.width !== targetWidth || canvas.height !== targetHeight) {
-      canvas.width = targetWidth;
-      canvas.height = targetHeight;
-      canvas.style.width = `${canvasSize.width}px`;
-      canvas.style.height = `${canvasSize.height}px`;
-    }
-
-    // 底图按 baseView 画的；世界坐标点的新屏幕位置 = 底图位置 × (新 scale/旧 scale) + 偏移修正
-    const baseView = baseViewRef.current;
-    const viewRatio = view.scale / baseView.scale;
-    const viewOffsetX = view.x - baseView.x * viewRatio;
-    const viewOffsetY = view.y - baseView.y * viewRatio;
-    if (needFullRedraw || (viewRatio === 1 && viewOffsetX === 0 && viewOffsetY === 0)) {
-      // view 未偏离底图：逐像素复制，无损
-      context.drawImage(offscreen, 0, 0);
-    } else {
-      // view 已变化：先铺背景渐变防露边，再把底图整体挪位/缩放画上去（不重画色块）
-      const background = context.createLinearGradient(0, 0, canvas.width, canvas.height);
-      background.addColorStop(0, heatmapCanvasTheme.backgroundStart);
-      background.addColorStop(1, heatmapCanvasTheme.backgroundEnd);
-      context.fillStyle = background;
-      context.fillRect(0, 0, canvas.width, canvas.height);
-      context.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
-      context.translate(viewOffsetX, viewOffsetY);
-      context.scale(viewRatio, viewRatio);
-      context.drawImage(offscreen, 0, 0, canvasSize.width, canvasSize.height);
-      context.setTransform(1, 0, 0, 1, 0, 0); // 复位：下方高亮绘制自管变换
-
-      // 连续缩放/平移停止 150ms 后全量重画一次，恢复文字清晰
-      if (sharpenTimerRef.current !== null) clearTimeout(sharpenTimerRef.current);
-      sharpenTimerRef.current = window.setTimeout(() => {
-        sharpenTimerRef.current = null;
-        baseDepsRef.current = []; // 置空快照，强制下一帧全量重画底图
-        drawFrameRef.current = requestAnimationFrame(() => {
-          drawFrameRef.current = null;
-          renderCanvasRef.current();
-        });
-      }, 150);
-    }
-
-    // 在底图上画高亮（只画描边，不重画色块）
-    if (highlightedStock || activeBoardRect || activeSubBoardRect) {
-      drawHeatmapHighlight({
-        context, pixelRatio, view, theme: heatmapCanvasTheme,
-        highlightedStock, activeBoardRect, activeSubBoardRect,
-      });
-    }
-  }, [
-    activeBoardRect, activeSubBoardRect, canvasSize.height, canvasSize.width, heatmapCanvasTheme,
-    highlightedStock, labelSizeMode, layoutPositions.boardRects, layoutPositions.stockRects,
-    layoutPositions.subBoardRects, priceColorMode, showPrice, view,
-  ]);
-
-  useEffect(() => {
-    renderCanvasRef.current = renderCanvas;
-  }, [renderCanvas]);
-
-  useEffect(() => {
-    // 取消上一帧还没执行的绘制（多次状态变化合并成一次绘制）
-    if (drawFrameRef.current !== null) {
-      cancelAnimationFrame(drawFrameRef.current);
-    }
-    drawFrameRef.current = requestAnimationFrame(() => {
-      drawFrameRef.current = null;
-      renderCanvas();
-    });
-    return () => {
-      if (drawFrameRef.current !== null) {
-        cancelAnimationFrame(drawFrameRef.current);
-        drawFrameRef.current = null;
-      }
-    };
-  }, [renderCanvas]);
-
-  // 组件卸载时清理"清晰重画"定时器
-  useEffect(() => () => {
-    if (sharpenTimerRef.current !== null) {
-      clearTimeout(sharpenTimerRef.current);
-      sharpenTimerRef.current = null;
-    }
-  }, []);
+  // 绘制管线整体在 use-canvas-renderer 里（离屏缓存/变换复用/清晰重画的设计说明见该文件头）
+  useCanvasRenderer({
+    canvasRef,
+    canvasSize,
+    view,
+    heatmapCanvasTheme,
+    priceColorMode,
+    labelSizeMode,
+    showPrice,
+    layoutPositions,
+    highlightedStock,
+    activeBoardRect,
+    activeSubBoardRect,
+  });
 
   // ============ 鼠标事件 ============
   const onMouseMove = useCallback((event: ReactMouseEvent<HTMLCanvasElement>) => {
@@ -936,196 +795,20 @@ export function MarketHeatmap({ locale }: { locale: Locale }) {
   }, [isMobile, pickFunctions, toWorldPoint, toggleSubBoardFilter]);
 
   // ============ 触摸事件 ============
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-
-    function onTouchStart(event: TouchEvent) {
-      const state = touchStateRef.current;
-      if (event.touches.length === 2) {
-        event.preventDefault();
-        const bounds = canvas!.getBoundingClientRect();
-        const center = { x: (event.touches[0].clientX + event.touches[1].clientX) / 2, y: (event.touches[0].clientY + event.touches[1].clientY) / 2 };
-        const cursorX = center.x - bounds.left;
-        const cursorY = center.y - bounds.top;
-        const distance = Math.hypot(event.touches[0].clientX - event.touches[1].clientX, event.touches[0].clientY - event.touches[1].clientY) || 1;
-        state.mode = "pinch";
-        state.moved = true;
-        state.startDistance = distance;
-        state.pinchCenterX = cursorX;
-        state.pinchCenterY = cursorY;
-        setView((current) => {
-          state.startScale = current.scale;
-          state.startOffsetX = current.x;
-          state.startOffsetY = current.y;
-          state.pinchWorldX = (cursorX - current.x) / current.scale;
-          state.pinchWorldY = (cursorY - current.y) / current.scale;
-          return current;
-        });
-        return;
-      }
-      if (event.touches.length === 1) {
-        const touch = event.touches[0];
-        state.mode = "tap";
-        state.moved = false;
-        state.startTs = Date.now();
-        state.startClientX = touch.clientX;
-        state.startClientY = touch.clientY;
-        state.lastClientX = touch.clientX;
-        state.lastClientY = touch.clientY;
-      }
-    }
-
-    function onTouchMove(event: TouchEvent) {
-      const state = touchStateRef.current;
-      if (event.touches.length >= 2 && state.mode === "pinch") {
-        event.preventDefault();
-        const currentDistance = Math.hypot(event.touches[0].clientX - event.touches[1].clientX, event.touches[0].clientY - event.touches[1].clientY);
-        if (!currentDistance) return;
-        const ratio = currentDistance / state.startDistance;
-        const nextScale = clamp(state.startScale * ratio, MIN_ZOOM, MAX_ZOOM);
-        const rawX = state.pinchCenterX - state.pinchWorldX * nextScale;
-        const rawY = state.pinchCenterY - state.pinchWorldY * nextScale;
-        setView(() => {
-          const nextOffset = clampOffset(canvasSize.width, canvasSize.height, nextScale, rawX, rawY);
-          return { scale: nextScale, x: nextOffset.x, y: nextOffset.y };
-        });
-        return;
-      }
-      if (event.touches.length === 1 && (state.mode === "tap" || state.mode === "pan")) {
-        const touch = event.touches[0];
-        const deltaFromStart = Math.hypot(touch.clientX - state.startClientX, touch.clientY - state.startClientY);
-        if (state.mode === "tap" && deltaFromStart > 6) { state.mode = "pan"; state.moved = true; }
-        if (state.mode !== "pan") return;
-        event.preventDefault();
-        const deltaX = touch.clientX - state.lastClientX;
-        const deltaY = touch.clientY - state.lastClientY;
-        state.lastClientX = touch.clientX;
-        state.lastClientY = touch.clientY;
-        setView((current) => {
-          if (current.scale <= 1) return current;
-          const nextOffset = clampOffset(canvasSize.width, canvasSize.height, current.scale, current.x + deltaX, current.y + deltaY);
-          if (nextOffset.x === current.x && nextOffset.y === current.y) return current;
-          return { ...current, x: nextOffset.x, y: nextOffset.y };
-        });
-      }
-    }
-
-    function performSingleTap(tapClientX: number, tapClientY: number) {
-      const tapBounds = canvas!.getBoundingClientRect();
-      const tapWorld = toWorldPoint(tapClientX - tapBounds.left, tapClientY - tapBounds.top);
-      const stock = pickFunctions.pickStock(tapWorld.x, tapWorld.y);
-      if (stock) {
-        setSelectedStockCode(stock.code);
-        setSelectedBoardName(stock.boardName);
-        setSelectedSubBoardName(stock.subBoardName || null);
-      } else {
-        const subBoard = pickFunctions.pickSubBoard(tapWorld.x, tapWorld.y);
-        if (subBoard) {
-          setSelectedStockCode(null);
-          setSelectedBoardName(subBoard.boardName);
-          setSelectedSubBoardName(subBoard.name);
-        } else {
-          const board = pickFunctions.pickBoard(tapWorld.x, tapWorld.y);
-          if (board) {
-            setSelectedStockCode(null);
-            setSelectedBoardName(board.name);
-            setSelectedSubBoardName(null);
-          }
-        }
-      }
-    }
-
-    function onTouchEnd(event: TouchEvent) {
-      const state = touchStateRef.current;
-      if (state.mode === "tap" && !state.moved && Date.now() - state.startTs < 350) {
-        const now = Date.now();
-        const sinceLastTap = now - state.lastTapTs;
-        const tapDistance = Math.hypot(state.startClientX - state.lastTapX, state.startClientY - state.lastTapY);
-        if (state.lastTapTs > 0 && sinceLastTap < 320 && tapDistance < 32) {
-          // 双击 → 取消挂起的单击定时器，只执行切换板块筛选
-          if (state.singleTapTimer !== null) {
-            clearTimeout(state.singleTapTimer);
-            state.singleTapTimer = null;
-          }
-          const bounds = canvas!.getBoundingClientRect();
-          const world = toWorldPoint(state.startClientX - bounds.left, state.startClientY - bounds.top);
-          const subBoardTitle = pickFunctions.pickSubBoardTitle(world.x, world.y);
-          if (subBoardTitle) {
-            toggleSubBoardFilter(subBoardTitle.name);
-          } else {
-            const boardTitle = pickFunctions.pickBoardTitle(world.x, world.y) ?? pickFunctions.pickBoard(world.x, world.y);
-            if (boardTitle) {
-              setBoardFilter((current) => current === boardTitle.name ? allBoardsValue : boardTitle.name);
-            }
-          }
-          state.lastTapTs = 0;
-          state.lastTapX = 0;
-          state.lastTapY = 0;
-          if (event.touches.length === 0) { state.mode = "idle"; state.moved = false; }
-          return;
-        }
-        // 第一次 tap → 记录时间，延迟 320ms 执行选中
-        // 如果在此期间来了第二次 tap（双击），定时器会被取消
-        state.lastTapTs = now;
-        state.lastTapX = state.startClientX;
-        state.lastTapY = state.startClientY;
-        // 保存当前 tap 的起始位置，避免被后续 touchStart 覆盖
-        const tapStartClientX = state.startClientX;
-        const tapStartClientY = state.startClientY;
-        if (state.singleTapTimer !== null) {
-          clearTimeout(state.singleTapTimer);
-        }
-        state.singleTapTimer = window.setTimeout(() => {
-          state.singleTapTimer = null;
-          performSingleTap(tapStartClientX, tapStartClientY);
-        }, 320);
-        if (event.touches.length === 0) { state.mode = "idle"; state.moved = false; }
-        return;
-      }
-      if (event.touches.length === 0) { state.mode = "idle"; state.moved = false; return; }
-      if (event.touches.length === 1 && state.mode === "pinch") {
-        const touch = event.touches[0];
-        state.mode = "pan";
-        state.moved = true;
-        state.startClientX = touch.clientX;
-        state.startClientY = touch.clientY;
-        state.lastClientX = touch.clientX;
-        state.lastClientY = touch.clientY;
-      }
-    }
-
-    // touchcancel：触摸被系统中断（如来电），不应触发任何 tap 操作
-    function onTouchCancel() {
-      const state = touchStateRef.current;
-      if (state.singleTapTimer !== null) {
-        clearTimeout(state.singleTapTimer);
-        state.singleTapTimer = null;
-      }
-      state.mode = "idle";
-      state.moved = false;
-      state.lastTapTs = 0;
-    }
-
-    canvas.addEventListener("touchstart", onTouchStart, { passive: false });
-    canvas.addEventListener("touchmove", onTouchMove, { passive: false });
-    canvas.addEventListener("touchend", onTouchEnd, { passive: true });
-    canvas.addEventListener("touchcancel", onTouchCancel, { passive: true });
-    // 触摸状态对象挂载后不再更换（ref.current 始终是同一对象），捕获一份给清理函数，
-    // 满足 react-hooks/exhaustive-deps 对 cleanup 读 ref 的静态检查
-    const touchState = touchStateRef.current;
-    return () => {
-      // 组件卸载或依赖变化时，清理可能挂起的单击定时器
-      if (touchState.singleTapTimer !== null) {
-        clearTimeout(touchState.singleTapTimer);
-        touchState.singleTapTimer = null;
-      }
-      canvas.removeEventListener("touchstart", onTouchStart);
-      canvas.removeEventListener("touchmove", onTouchMove);
-      canvas.removeEventListener("touchend", onTouchEnd);
-      canvas.removeEventListener("touchcancel", onTouchCancel);
-    };
-  }, [canvasSize.height, canvasSize.width, pickFunctions, toWorldPoint, toggleSubBoardFilter, touchStateRef]);
+  // 手势状态机整体在 use-touch-gestures 里（单击选中/双击筛选/单指平移/双指捏合缩放）
+  useTouchGestures({
+    canvasRef,
+    canvasSize,
+    pickFunctions,
+    toWorldPoint,
+    touchStateRef,
+    toggleSubBoardFilter,
+    setView,
+    setSelectedStockCode,
+    setSelectedBoardName,
+    setSelectedSubBoardName,
+    setBoardFilter,
+  });
 
   // ============ 全屏 ============
   useEffect(() => {

@@ -30,6 +30,32 @@ export type PickFunctions = {
   pickSubBoardTitle: (worldX: number, worldY: number) => SubBoardRect | null;
 };
 
+/** 触摸手势状态机（use-touch-gestures 也读写它，类型在此定义并导出） */
+export type TouchState = {
+  mode: "idle" | "pan" | "pinch" | "tap";
+  startClientX: number;
+  startClientY: number;
+  lastClientX: number;
+  lastClientY: number;
+  startTs: number;
+  moved: boolean;
+  startDistance: number;
+  startScale: number;
+  startOffsetX: number;
+  startOffsetY: number;
+  pinchCenterX: number;
+  pinchCenterY: number;
+  pinchWorldX: number;
+  pinchWorldY: number;
+  lastTapTs: number;
+  lastTapX: number;
+  lastTapY: number;
+  // 单击选中的延迟定时器：第一次 tap 后等一段时间，
+  // 如果期间来了第二次 tap（双击），就取消定时器不执行选中，
+  // 避免双击时先选中再切换导致的闪烁
+  singleTapTimer: number | null;
+};
+
 /**
  * Canvas 交互 Hook
  *
@@ -57,8 +83,8 @@ export function useCanvasInteraction(params: {
     pointerY: 0,
   });
 
-  const touchStateRef = useRef({
-    mode: "idle" as "idle" | "pan" | "pinch" | "tap",
+  const touchStateRef = useRef<TouchState>({
+    mode: "idle",
     startClientX: 0,
     startClientY: 0,
     lastClientX: 0,
@@ -76,10 +102,7 @@ export function useCanvasInteraction(params: {
     lastTapTs: 0,
     lastTapX: 0,
     lastTapY: 0,
-    // 单击选中的延迟定时器：第一次 tap 后等一段时间，
-    // 如果期间来了第二次 tap（双击），就取消定时器不执行选中，
-    // 避免双击时先选中再切换导致的闪烁
-    singleTapTimer: null as number | null,
+    singleTapTimer: null,
   });
 
   /** 屏幕坐标 → 世界坐标（考虑缩放和偏移） */
