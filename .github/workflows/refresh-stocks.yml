@@ -3,21 +3,24 @@
 # 流程：AKShare 拉最新数据 → 覆盖 JSON → 校验 → git push → Vercel 自动部署
 # 也可以在 GitHub 仓库的 Actions 页面手动触发（workflow_dispatch）
 #
-# 每天跑三次（北京时间，周一到周五）：
-#   09:00 开盘前 — 拉最新名单，确保当天新上市的股票开盘前就进入热力图
-#   12:00 午休中 — 用上午盘的市值刷新色块大小，下午 13:00 复盘时已是最新
-#   16:00 收盘后 — 用全天收盘数据做最终刷新
+# 每天跑三次（周一到周五，UTC 时间）：
+#   UTC 21:53 = 北京 05:53 — 开盘前拉最新名单
+#   UTC 00:23 = 北京 08:23 — 上午盘中刷新
+#   UTC 01:53 = 北京 09:53 — 午前盘中刷新
 #
-# A 股交易时段：09:30-11:30 / 13:00-15:00，午休 11:30-13:00
-# cron 用 UTC 时间：UTC 01:00 = CST 09:00，UTC 04:00 = CST 12:00，UTC 08:00 = CST 16:00
+# 为什么不设在北京 9/12/16 点整：GitHub 定时任务整点排队严重（实测漂移 5.5~7 小时，
+# 见 2026-10 的运行记录），漂移后全落在北京晚间，而东方财富接口晚间会拒绝海外
+# 服务器（502/断连，白天正常）。改到 UTC 深夜的非整点后，无论漂移半小时还是 7
+# 小时，实际执行都落在北京白天。
 
 name: Refresh Stock Data
 
 on:
   schedule:
-    - cron: "0 1 * * 1-5"   # 北京时间 09:00 开盘前
-    - cron: "0 4 * * 1-5"   # 北京时间 12:00 午休中
-    - cron: "0 8 * * 1-5"   # 北京时间 16:00 收盘后
+    # 注意星期几按 UTC 算：UTC 周日~周四的 21:53 对应北京周一~周五 05:53
+    - cron: "53 21 * * 0-4"
+    - cron: "23 0 * * 1-5"
+    - cron: "53 1 * * 1-5"
   workflow_dispatch: {}
 
 # 防止同一时间跑两个实例
@@ -31,7 +34,8 @@ permissions:
 jobs:
   refresh:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    # 3 轮拉取 + 2 次 3 分钟等待最多约 18 分钟，留余量
+    timeout-minutes: 25
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -45,7 +49,25 @@ jobs:
         run: pip install -r requirements.txt
 
       - name: Fetch latest stock data
-        run: python scripts/fetch_stocks.py
+        # 东方财富接口对 GitHub 海外 IP 偶发整轮拒绝（502/断连，白天也有短时抖动），
+        # 一轮失败后等 3 分钟再整轮重试，最多 3 轮
+        run: |
+          ok=0
+          for i in 1 2 3; do
+            if python scripts/fetch_stocks.py; then
+              ok=1
+              break
+            fi
+            echo "第 $i/3 轮拉取失败"
+            if [ "$i" -lt 3 ]; then
+              echo "等待 180 秒后重试..."
+              sleep 180
+            fi
+          done
+          if [ "$ok" -ne 1 ]; then
+            echo "❌ 3 轮全部失败"
+            exit 1
+          fi
 
       - name: Validate output
         run: |
